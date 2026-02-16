@@ -74,7 +74,6 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
     appRole: isAllowedUser
       ? getAppRole({
           email: user?.email,
-          metadataRole: user?.user_metadata?.app_role,
         })
       : "user",
     ...opts,

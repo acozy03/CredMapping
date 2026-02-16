@@ -22,7 +22,6 @@ export default async function Home(props: {
 
   const appRole = getAppRole({
     email: user?.email,
-    metadataRole: user?.user_metadata?.app_role,
   });
 
   return (

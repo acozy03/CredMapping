@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
 
   const appRole = getAppRole({
     email: user.email,
-    metadataRole: user.user_metadata?.app_role,
   });
 
   await supabase.auth.updateUser({

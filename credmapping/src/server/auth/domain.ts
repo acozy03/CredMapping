@@ -11,17 +11,7 @@ export const isAllowedEmail = (email: string | null | undefined): boolean => {
 
 export const getAppRole = (params: {
   email: string | null | undefined;
-  metadataRole?: unknown;
 }): AppRole => {
-  const metadataRole =
-    typeof params.metadataRole === "string"
-      ? params.metadataRole.toLowerCase()
-      : undefined;
-
-  if (metadataRole === "superadmin") return "superadmin";
-  if (metadataRole === "admin") return "admin";
-  if (metadataRole === "user") return "user";
-
   if (params.email?.toLowerCase().endsWith("@vestasolutions.com")) {
     return "admin";
   }

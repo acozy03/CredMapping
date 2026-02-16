@@ -46,7 +46,13 @@ export const updateSession = async (request: NextRequest) => {
     redirectUrl.pathname = "/";
     redirectUrl.searchParams.set("error", "domain_not_allowed");
 
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+
+    for (const cookie of response.cookies.getAll()) {
+      redirectResponse.cookies.set(cookie);
+    }
+
+    return redirectResponse;
   }
 
   return response;
