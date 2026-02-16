@@ -6,11 +6,32 @@
  * TL;DR - This is where all the tRPC server stuff is created and plugged in. The pieces you will
  * need to use are documented accordingly near the end.
  */
-import { initTRPC } from "@trpc/server";
+import { createServerClient } from "@supabase/ssr";
+import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
+import { env } from "~/env";
+import { getAppRole, isAllowedEmail } from "~/server/auth/domain";
 import { db } from "~/server/db";
+
+const parseCookieHeader = (cookieHeader: string): { name: string; value: string }[] => {
+  return cookieHeader
+    .split(";")
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0)
+    .map((chunk) => {
+      const separator = chunk.indexOf("=");
+      if (separator === -1) {
+        return { name: chunk, value: "" };
+      }
+
+      return {
+        name: chunk.slice(0, separator),
+        value: decodeURIComponent(chunk.slice(separator + 1)),
+      };
+    });
+};
 
 /**
  * 1. CONTEXT
@@ -25,8 +46,37 @@ import { db } from "~/server/db";
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+  const cookieHeader = opts.headers.get("cookie") ?? "";
+  const requestCookies = parseCookieHeader(cookieHeader);
+
+  const supabase = createServerClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll: () => requestCookies,
+        setAll: () => {
+          // No-op in tRPC fetch adapter context.
+        },
+      },
+    },
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isAllowedUser = isAllowedEmail(user?.email);
+
   return {
     db,
+    user: isAllowedUser ? user : null,
+    appRole: isAllowedUser
+      ? getAppRole({
+          email: user?.email,
+          metadataRole: user?.user_metadata?.app_role,
+        })
+      : "user",
     ...opts,
   };
 };
@@ -104,3 +154,16 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * are logged in.
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
+
+export const protectedProcedure = publicProcedure.use(({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Please sign in." });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user,
+    },
+  });
+});
