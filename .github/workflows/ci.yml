@@ -14,6 +14,7 @@ jobs:
         working-directory: credmapping
     env:
       SKIP_ENV_VALIDATION: 1
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
