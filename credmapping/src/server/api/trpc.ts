@@ -68,14 +68,16 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 
   const isAllowedUser = isAllowedEmail(user?.email);
 
+  // Read role from app_metadata (tamper-proof, set via admin client during auth callback)
+  const storedRole = user?.app_metadata?.app_role as string | undefined;
+  const appRole = isAllowedUser
+    ? storedRole ?? getAppRole({ email: user?.email })
+    : "user";
+
   return {
     db,
     user: isAllowedUser ? user : null,
-    appRole: isAllowedUser
-      ? getAppRole({
-          email: user?.email,
-        })
-      : "user",
+    appRole,
     ...opts,
   };
 };

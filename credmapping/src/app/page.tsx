@@ -20,9 +20,9 @@ export default async function Home(props: {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const appRole = getAppRole({
-    email: user?.email,
-  });
+  // Read role from app_metadata (tamper-proof, set via admin client during auth callback)
+  const storedRole = user?.app_metadata?.app_role as string | undefined;
+  const appRole = storedRole ?? getAppRole({ email: user?.email });
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">

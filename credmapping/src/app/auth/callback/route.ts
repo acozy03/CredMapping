@@ -1,5 +1,7 @@
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { env } from "~/env";
 import { getAppRole, isAllowedEmail } from "~/server/auth/domain";
 import { createClient } from "~/utils/supabase/server";
 
@@ -42,10 +44,14 @@ export async function GET(request: NextRequest) {
     email: user.email,
   });
 
-  await supabase.auth.updateUser({
-    data: {
-      app_role: appRole,
-    },
+  // Write role to app_metadata via admin client (users cannot tamper with app_metadata)
+  const adminClient = createAdminClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+
+  await adminClient.auth.admin.updateUserById(user.id, {
+    app_metadata: { app_role: appRole },
   });
 
   return NextResponse.redirect(new URL(nextPath, baseUrl));
