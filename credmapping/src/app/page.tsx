@@ -22,7 +22,7 @@ export default async function Home(props: {
   } = await supabase.auth.getUser();
 
   const appRole = getAppRole({
-    email: user?.email,
+    agentRole: "user",
   });
 
   return (
