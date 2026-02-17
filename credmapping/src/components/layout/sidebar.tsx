@@ -39,7 +39,7 @@ export function Sidebar({ userRole }: SidebarProps) {
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved) setIsCollapsed(JSON.parse(saved));
+if (saved) setIsCollapsed(JSON.parse(saved) as boolean);
     setMounted(true);
   }, []);
 

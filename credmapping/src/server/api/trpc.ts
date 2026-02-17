@@ -68,7 +68,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isAllowedUser = Boolean(user) && isAllowedEmail(user.email);
+  const isAllowedUser = !!user && isAllowedEmail(user.email);
   const normalizedEmail = user?.email?.toLowerCase();
 
   const [agent] = isAllowedUser && normalizedEmail && user

@@ -12,15 +12,27 @@ import {
   CommandSeparator,
 } from "~/components/ui/command";
 
+interface SearchItem {
+  name: string;
+  href: string;
+}
+
 export function GlobalSearch() {
   const [open, setOpen] =  useState(false);
-  const [recent, setRecent] = useState<{ name: string; href: string }[]>([]);
+  const [recent, setRecent] = useState<SearchItem[]>([]);
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("recent-searches");
-    if (saved) setRecent(JSON.parse(saved));
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as SearchItem[];
+        setRecent(parsed);
+      } catch (e) {
+        console.error("Failed to parse recent searches", e);
+      }
+    }
   }, []);
 
   const navigateTo = (name: string, href: string) => {

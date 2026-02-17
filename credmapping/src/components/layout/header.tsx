@@ -47,6 +47,9 @@ export function Header({ user }: { user: UserType }) {
     });
   };
 
+  const fullName = (user?.user_metadata?.full_name as string | undefined) ?? "User";
+  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
+
   return (
     <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b bg-background px-6">
       {/* Breadcrumb */}
@@ -91,9 +94,9 @@ export function Header({ user }: { user: UserType }) {
         <DropdownMenu>
           <DropdownMenuTrigger className="focus:outline-none">
             <Avatar className="h-9 w-9 border hover:opacity-80 transition-opacity">
-              <AvatarImage src={user?.user_metadata?.avatar_url} />
+              <AvatarImage src={avatarUrl} />
               <AvatarFallback className="bg-primary text-primary-foreground">
-                {user?.email?.charAt(0).toUpperCase() || <User size={18} />}
+                {fullName.charAt(0).toUpperCase() ?? <User size={18} />}
               </AvatarFallback>
             </Avatar>
           </DropdownMenuTrigger>
@@ -101,7 +104,7 @@ export function Header({ user }: { user: UserType }) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{user?.user_metadata?.full_name || "User"}</p>
+                <p className="text-sm font-medium leading-none">{fullName}</p>
                 <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
               </div>
             </DropdownMenuLabel>

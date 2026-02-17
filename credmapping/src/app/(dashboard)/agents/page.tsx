@@ -32,7 +32,7 @@ export default function AgentsPage() {
           </div>
           <h3 className="mt-4 text-lg font-semibold">No agents found</h3>
           <p className="mb-4 mt-2 text-sm text-muted-foreground">
-            You haven't added any agents yet. Start by creating your first one.
+            You haven&apos;t added any agents yet. Start by creating your first one.
           </p>
           <Button size="sm">Add Agent</Button>
         </div>
