@@ -97,10 +97,10 @@ export function Header({ user }: { user: UserType }) {
             </Avatar>
           </DropdownMenuTrigger>
           
-          <DropdownMenuContent align="end" className="w-full min-w-0">
+          <DropdownMenuContent align="end" className="w-30 min-w-0">
             <DropdownMenuLabel className="font-normal">
               <div className="flex w-full flex-col space-y-1">
-                <p className="truncate text-sm font-medium leading-none">{fullName}</p>
+                <p className="truncate text-sm font-medium leading-none">{fullName.split(' ')[0]}</p>
                 <p className="truncate text-xs leading-none text-muted-foreground">{user?.email}</p>
               </div>
             </DropdownMenuLabel>
