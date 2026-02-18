@@ -8,7 +8,7 @@
  */
 import { createServerClient } from "@supabase/ssr";
 import { TRPCError, initTRPC } from "@trpc/server";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
@@ -69,20 +69,19 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   } = await supabase.auth.getUser();
 
   const authenticatedUser = user && isAllowedEmail(user.email) ? user : null;
-  const normalizedEmail = authenticatedUser?.email?.toLowerCase();
 
-  const [agent] = authenticatedUser && normalizedEmail
+  const [agent] = authenticatedUser
     ? await withRls({
         jwtClaims: {
           sub: authenticatedUser.id,
-          email: normalizedEmail,
+          email: authenticatedUser.email?.toLowerCase() ?? "",
           role: "authenticated",
         },
         run: (tx) =>
           tx
             .select({ role: agents.role })
             .from(agents)
-            .where(eq(sql`lower(${agents.email})`, normalizedEmail))
+            .where(eq(agents.userId, authenticatedUser.id))
             .limit(1),
       })
     : [];

@@ -5,7 +5,7 @@ import { getAppRole } from "~/server/auth/domain";
 import { redirect } from "next/navigation";
 import { db } from "~/server/db";
 import { agents } from "~/server/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export default async function DashboardLayout({
   children,
@@ -18,15 +18,11 @@ export default async function DashboardLayout({
 
   if (error || !user) redirect("/");
 
-  const normalizedEmail = user.email?.toLowerCase();
-  
-  const agentRecord = normalizedEmail 
-    ? await db
-        .select({ role: agents.role })
-        .from(agents)
-        .where(eq(sql`lower(${agents.email})`, normalizedEmail))
-        .limit(1)
-    : [];
+  const agentRecord = await db
+    .select({ role: agents.role })
+    .from(agents)
+    .where(eq(agents.userId, user.id))
+    .limit(1);
 
   const dbRole = agentRecord[0]?.role;
 

@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   pgPolicy,
+  pgSchema,
   pgTable,
   text,
   timestamp,
@@ -23,9 +24,15 @@ export const teamEnum = pgEnum("team_location", ["IN", "US"]);
 const isAdminOrSuperAdmin = sql`exists (
   select 1
   from public.agents a
-  where lower(a.email) = lower((auth.jwt() ->> 'email'))
+  where a.user_id = ((auth.jwt() ->> 'sub')::uuid)
     and a.role in ('admin', 'superadmin')
 )`;
+
+const authSchema = pgSchema("auth");
+
+export const authUsers = authSchema.table("users", {
+  id: uuid("id").primaryKey().notNull(),
+});
 
 const allowAllForAuthenticated = sql`true`;
 
@@ -37,16 +44,12 @@ const createAuthenticatedAllPolicy = (policyName: string) =>
     withCheck: allowAllForAuthenticated,
   });
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().notNull(),
-  email: text("email").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
 export const agents = pgTable("agents", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").references(() => users.id),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email").notNull().unique(),
@@ -278,8 +281,6 @@ export const teamAndAgentTasks = pgTable("team_and_agent_tasks", {
 });
 
 export const nowSql = sql`now()`;
-
-export const usersAuthenticatedAll = createAuthenticatedAllPolicy("users_authenticated_all").link(users);
 
 export const agentsAuthenticatedAll = createAuthenticatedAllPolicy("agents_authenticated_all").link(agents);
 
