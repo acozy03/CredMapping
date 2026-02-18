@@ -27,6 +27,16 @@ const isAdminOrSuperAdmin = sql`exists (
     and a.role in ('admin', 'superadmin')
 )`;
 
+const allowAllForAuthenticated = sql`true`;
+
+const createAuthenticatedAllPolicy = (policyName: string) =>
+  pgPolicy(policyName, {
+    for: "all",
+    to: authenticatedRole,
+    using: allowAllForAuthenticated,
+    withCheck: allowAllForAuthenticated,
+  });
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().notNull(),
   email: text("email").notNull(),
@@ -45,25 +55,18 @@ export const agents = pgTable("agents", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
-export const auditLog = pgTable(
-  "audit_log",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
 
-    tableName: text("table_name").notNull(),
-    recordId: uuid("record_id"),
-
-    action: text("action").notNull(),
-
-    actorId: uuid("actor_id").references(() => agents.id, { onDelete: "set null" }),
-    actorEmail: text("actor_email"),
-
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-
-    oldData: jsonb("old_data").default(sql`'{}'::jsonb`),
-    newData: jsonb("new_data").default(sql`'{}'::jsonb`),
-  },
-);
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tableName: text("table_name").notNull(),
+  recordId: uuid("record_id"),
+  action: text("action").notNull(),
+  actorId: uuid("actor_id").references(() => agents.id, { onDelete: "set null" }),
+  actorEmail: text("actor_email"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  oldData: jsonb("old_data").default(sql`'{}'::jsonb`),
+  newData: jsonb("new_data").default(sql`'{}'::jsonb`),
+});
 
 export const facilities = pgTable("facilities", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -100,26 +103,22 @@ export const workflowPhases = pgTable("workflow_phases", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const commLogs = pgTable(
-  "comm_logs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    relatedType: relatedTypeEnum("related_type"),
-    relatedId: uuid("related_id"),
-    kind: text("kind"),
-    subject: text("subject"),
-    status: text("status"),
-    requestedAt: date("requested_at"),
-    lastFollowupAt: date("last_followup_at"),
-    nextFollowupAt: date("next_followup_at"),
-    receivedAt: date("received_at"),
-    notes: text("notes"),
-    createdBy: uuid("created_by").references(() => agents.id),
-    lastUpdatedBy: uuid("last_updated_by").references(() => agents.id),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-    zohoTicketId: text("zoho_ticket_id"),
-    updatedAt: timestamp("updated_at", { withTimezone: true }),
-  });
+export const commLogs = pgTable("comm_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  relatedType: relatedTypeEnum("related_type"),
+  relatedId: uuid("related_id"),
+  subject: text("subject"),
+  status: text("status"),
+  requestedAt: date("requested_at"),
+  lastFollowupAt: date("last_followup_at"),
+  nextFollowupAt: date("next_followup_at"),
+  receivedAt: date("received_at"),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => agents.id),
+  lastUpdatedBy: uuid("last_updated_by").references(() => agents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
 
 export const configEnums = pgTable("config_enums", {
   key: text("key").primaryKey(),
@@ -279,6 +278,38 @@ export const teamAndAgentTasks = pgTable("team_and_agent_tasks", {
 });
 
 export const nowSql = sql`now()`;
+
+export const usersAuthenticatedAll = createAuthenticatedAllPolicy("users_authenticated_all").link(users);
+
+export const agentsAuthenticatedAll = createAuthenticatedAllPolicy("agents_authenticated_all").link(agents);
+
+export const auditLogAuthenticatedAll = createAuthenticatedAllPolicy("audit_log_authenticated_all").link(auditLog);
+
+export const facilitiesAuthenticatedAll = createAuthenticatedAllPolicy("facilities_authenticated_all").link(facilities);
+
+export const providersAuthenticatedAll = createAuthenticatedAllPolicy("providers_authenticated_all").link(providers);
+
+export const workflowPhasesAuthenticatedAll = createAuthenticatedAllPolicy("workflow_phases_authenticated_all").link(workflowPhases);
+
+export const configEnumsAuthenticatedAll = createAuthenticatedAllPolicy("config_enums_authenticated_all").link(configEnums);
+
+export const facilityContactsAuthenticatedAll = createAuthenticatedAllPolicy("facility_contacts_authenticated_all").link(facilityContacts);
+
+export const incidentLogsAuthenticatedAll = createAuthenticatedAllPolicy("incident_logs_authenticated_all").link(incidentLogs);
+
+export const providerFacilityCredentialsAuthenticatedAll = createAuthenticatedAllPolicy("provider_facility_credentials_authenticated_all").link(providerFacilityCredentials);
+
+export const pfcWorkflowsAuthenticatedAll = createAuthenticatedAllPolicy("pfc_workflows_authenticated_all").link(pfcWorkflows);
+
+export const prelivePipelineAuthenticatedAll = createAuthenticatedAllPolicy("prelive_pipeline_authenticated_all").link(prelivePipeline);
+
+export const providerVestaPrivilegesAuthenticatedAll = createAuthenticatedAllPolicy("provider_vesta_privileges_authenticated_all").link(providerVestaPrivileges);
+
+export const stateLicenseWorkflowsAuthenticatedAll = createAuthenticatedAllPolicy("state_license_workflows_authenticated_all").link(stateLicenseWorkflows);
+
+export const stateLicensesAuthenticatedAll = createAuthenticatedAllPolicy("state_licenses_authenticated_all").link(stateLicenses);
+
+export const teamAndAgentTasksAuthenticatedAll = createAuthenticatedAllPolicy("team_and_agent_tasks_authenticated_all").link(teamAndAgentTasks);
 
 export const commLogsSelectAdmin = pgPolicy("comm_logs_admin_all", {
   for: "all",
