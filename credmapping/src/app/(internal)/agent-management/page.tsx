@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "~/trpc/react";
+import { createClient } from "~/utils/supabase/client";
 import { toast } from "sonner";
 import {
   ShieldCheck,
@@ -288,9 +289,11 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
 function ChangeRoleDialog({
   agent,
   onSuccess,
+  disabled = false,
 }: {
   agent: { id: string; firstName: string; lastName: string; role: string };
   onSuccess: () => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [newRole, setNewRole] = useState(agent.role);
@@ -309,7 +312,7 @@ function ChangeRoleDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5">
+        <Button variant="ghost" size="sm" className="gap-1.5" disabled={disabled}>
           <ShieldCheck className="h-3.5 w-3.5" />
           Change Role
         </Button>
@@ -327,10 +330,17 @@ function ChangeRoleDialog({
           </span>
         </p>
 
+        {disabled && (
+          <p className="text-xs text-muted-foreground">
+            You cannot change your own permission level.
+          </p>
+        )}
+
         <div className="py-4">
           <Select
             value={newRole}
             onValueChange={setNewRole}
+            disabled={disabled}
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -354,7 +364,7 @@ function ChangeRoleDialog({
                 role: newRole as "user" | "admin" | "superadmin",
               })
             }
-            disabled={newRole === agent.role || updateMutation.isPending}
+            disabled={disabled || newRole === agent.role || updateMutation.isPending}
           >
             {updateMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -371,9 +381,11 @@ function ChangeRoleDialog({
 function RemoveAgentDialog({
   agent,
   onSuccess,
+  disabled = false,
 }: {
   agent: { id: string; firstName: string; lastName: string };
   onSuccess: () => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -391,7 +403,12 @@ function RemoveAgentDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-destructive hover:text-destructive"
+          disabled={disabled}
+        >
           <Trash2 className="h-3.5 w-3.5" />
           Remove
         </Button>
@@ -410,6 +427,12 @@ function RemoveAgentDialog({
           from the agent pool? This action cannot be undone.
         </p>
 
+        {disabled && (
+          <p className="text-xs text-muted-foreground">
+            You cannot remove your own account from agent management.
+          </p>
+        )}
+
         <ModalFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
@@ -417,7 +440,7 @@ function RemoveAgentDialog({
           <Button
             variant="destructive"
             onClick={() => removeMutation.mutate({ agentId: agent.id })}
-            disabled={removeMutation.isPending}
+            disabled={disabled || removeMutation.isPending}
           >
             {removeMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -433,7 +456,21 @@ function RemoveAgentDialog({
 // ─── Main Page ──────────────────────────────────────────────────
 export default function SuperAdminPage() {
   const [search, setSearch] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const utils = api.useUtils();
+
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUserId(user?.id ?? null);
+    };
+
+    void loadCurrentUser();
+  }, []);
 
   const { data: agents, isLoading } = api.superadmin.listAgents.useQuery();
 
@@ -460,7 +497,7 @@ export default function SuperAdminPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-primary" />
-            Super Admin Panel
+            Agent Management
           </h1>
           <p className="text-sm text-muted-foreground">
             Assign agents from the user pool and manage their permissions.
@@ -529,8 +566,16 @@ export default function SuperAdminPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <ChangeRoleDialog agent={agent} onSuccess={refetch} />
-                      <RemoveAgentDialog agent={agent} onSuccess={refetch} />
+                      <ChangeRoleDialog
+                        agent={agent}
+                        onSuccess={refetch}
+                        disabled={agent.userId === currentUserId}
+                      />
+                      <RemoveAgentDialog
+                        agent={agent}
+                        onSuccess={refetch}
+                        disabled={agent.userId === currentUserId}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

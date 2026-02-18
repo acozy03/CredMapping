@@ -24,7 +24,7 @@ const routeLabels: Record<string, string> = {
   agents: "Management",
   facilities: "Management",
   workflows: "System",
-  admin: "Admin",
+  "agent-management": "System",
 };
 
 export function Header({ user }: { user: UserType }) {

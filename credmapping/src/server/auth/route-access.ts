@@ -10,7 +10,7 @@ import { eq, sql } from "drizzle-orm";
  * Keep this in sync with the sidebar items in sidebar.tsx.
  */
 export const routeRoles: Record<string, AppRole[]> = {
-  "/admin": ["superadmin"],
+  "/agent-management": ["superadmin"],
   "/workflows": ["admin", "superadmin"],
   // /dashboard, /agents, /facilities → all roles (no entry needed)
 };

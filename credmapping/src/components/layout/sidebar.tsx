@@ -63,8 +63,8 @@ const sidebarItems = [
     roles: ["admin", "superadmin"],
   },
   {
-    name: "Admin Panel",
-    href: "/admin",
+    name: "Agent Management",
+    href: "/agent-management",
     icon: ShieldCheck,
     roles: ["superadmin"],
   },

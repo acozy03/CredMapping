@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
 
@@ -134,6 +135,23 @@ export const superadminRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const [targetAgent] = await ctx.db
+        .select({ userId: agents.userId })
+        .from(agents)
+        .where(eq(agents.id, input.agentId))
+        .limit(1);
+
+      if (!targetAgent) {
+        throw new Error("Agent not found.");
+      }
+
+      if (targetAgent.userId === ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You cannot change your own permission level.",
+        });
+      }
+
       const [updated] = await ctx.db
         .update(agents)
         .set({
@@ -156,6 +174,23 @@ export const superadminRouter = createTRPCRouter({
   removeAgent: superAdminProcedure
     .input(z.object({ agentId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const [targetAgent] = await ctx.db
+        .select({ userId: agents.userId })
+        .from(agents)
+        .where(eq(agents.id, input.agentId))
+        .limit(1);
+
+      if (!targetAgent) {
+        throw new Error("Agent not found.");
+      }
+
+      if (targetAgent.userId === ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You cannot remove your own account.",
+        });
+      }
+
       const [deleted] = await ctx.db
         .delete(agents)
         .where(eq(agents.id, input.agentId))
