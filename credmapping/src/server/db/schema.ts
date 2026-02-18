@@ -19,6 +19,7 @@ export const relatedTypeEnum = pgEnum("facility_or_provider", ["facility", "prov
 export const initialOrRenewalEnum = pgEnum("initial_or_renewal", ["initial", "renewal"]);
 export const agentRoleEnum = pgEnum("agent_role", ["user", "admin", "superadmin"]);
 export const teamEnum = pgEnum("team_location", ["IN", "US"]);
+export const privilegeTierEnum = pgEnum("privilege_tier", ["inactive", "full", "temp", "in progress"]);
 
 
 const isAdminOrSuperAdmin = sql`exists (
@@ -227,7 +228,7 @@ export const prelivePipeline = pgTable("prelive_pipeline", {
 export const providerVestaPrivileges = pgTable("provider_vesta_privileges", {
   id: uuid("id").defaultRandom().primaryKey(),
   providerId: uuid("provider_id").references(() => providers.id),
-  privilegeTier: text("privilege_tier"),
+  privilegeTier: privilegeTierEnum("privilege_tier"),
   tempApprovedAt: date("temp_approved_at"),
   tempExpiresAt: date("temp_expires_at"),
   initialApprovedAt: date("initial_approved_at"),
