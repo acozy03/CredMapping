@@ -108,11 +108,11 @@ export function Header({ user }: { user: UserType }) {
               </Avatar>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-30 min-w-0">
+            <DropdownMenuContent align="end" className="w-28 min-w-0">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex w-full flex-col space-y-1">
-                  <p className="truncate text-sm font-medium leading-none">{fullName.split(" ")[0]}</p>
-                  <p className="truncate text-xs leading-none text-muted-foreground">{user?.email}</p>
+                  <p className="truncate text-sm flex justify-center items-center font-medium leading-none">{fullName.split(" ")[0]}</p>
+                  
                 </div>
               </DropdownMenuLabel>
 
@@ -148,7 +148,7 @@ export function Header({ user }: { user: UserType }) {
                 onClick={handleSignOut}
                 onSelect={(e) => e.preventDefault()}
                 disabled={isPending}
-                className="mx-auto w-28 cursor-pointer justify-center gap-2 text-destructive focus:text-destructive"
+                className="mx-auto w-24 truncate cursor-pointer justify-center gap-2 text-destructive focus:text-destructive"
               >
                 <LogOut size={16} />
                 {isPending ? "Signing out..." : "Sign out"}
