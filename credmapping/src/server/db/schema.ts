@@ -19,6 +19,7 @@ export const initialOrRenewalEnum = pgEnum("initial_or_renewal", ["initial", "re
 export const agentRoleEnum = pgEnum("agent_role", ["user", "admin", "superadmin"]);
 export const teamEnum = pgEnum("team_location", ["IN", "US"]);
 export const privilegeTierEnum = pgEnum("privilege_tier", ["Inactive", "Full", "Temp", "In Progress"]);
+export const facilityStatusEnum = pgEnum("facility_status", ["Inactive", "Active", "In Progress"]);
 export const formSizes = pgEnum("form_size", ["small", "medium", "large"])
 export const workflowType = pgEnum("workflow_type", ["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges"])
 export const facilityStatus = pgEnum("status", ["Active", "Inactive", "In Progress"])
@@ -81,7 +82,7 @@ export const facilities = pgTable("facilities", {
   name: text("name"),
   state: text("state"),
   proxy: text("proxy"),
-  status: facilityStatus("status"),
+  status: facilityStatusEnum("status"),
   yearlyVolume: bigint("yearly_volume", { mode: "number" }),
   modalities: text("modalities").array(),
   tatSla: text("tat_sla"),

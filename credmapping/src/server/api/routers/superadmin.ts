@@ -6,7 +6,7 @@ import {
   createTRPCRouter,
   superAdminProcedure,
 } from "~/server/api/trpc";
-import { agents, authUsers, providers } from "~/server/db/schema";
+import { agents, authUsers, facilities, providers } from "~/server/db/schema";
 
 export const superadminRouter = createTRPCRouter({
   /**
@@ -199,6 +199,38 @@ export const superadminRouter = createTRPCRouter({
       }
 
       return { success: true };
+    }),
+
+  /**
+   * Create a facility record.
+   */
+  createFacility: superAdminProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(1, "Facility name is required"),
+        state: z.string().trim().max(2).optional(),
+        email: z.string().trim().email().optional(),
+        address: z.string().trim().optional(),
+        proxy: z.string().trim().optional(),
+        tatSla: z.string().trim().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [newFacility] = await ctx.db
+        .insert(facilities)
+        .values({
+          name: input.name,
+          state: input.state?.toUpperCase() ?? null,
+          email: input.email?.toLowerCase() ?? null,
+          address: input.address ?? null,
+          proxy: input.proxy ?? null,
+          tatSla: input.tatSla ?? null,
+          status: "Active",
+          active: true,
+        })
+        .returning();
+
+      return newFacility;
     }),
 
   /**

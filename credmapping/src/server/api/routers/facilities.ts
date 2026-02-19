@@ -38,7 +38,7 @@ export const facilitiesRouter = createTRPCRouter({
         );
       }
       if (activeOnly) {
-        conditions.push(eq(facilities.active, true));
+        conditions.push(eq(facilities.status, "Active"));
       }
 
       const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -64,6 +64,7 @@ export const facilitiesRouter = createTRPCRouter({
             name: facilities.name,
             state: facilities.state,
             proxy: facilities.proxy,
+            status: facilities.status,
             active: facilities.active,
             email: facilities.email,
             address: facilities.address,
