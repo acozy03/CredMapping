@@ -88,8 +88,6 @@ export const superadminRouter = createTRPCRouter({
     .input(
       z.object({
         userId: z.string().uuid(),
-        firstName: z.string().min(1, "First name is required"),
-        lastName: z.string().min(1, "Last name is required"),
         email: z.string().email(),
         team: z.enum(["IN", "US"]),
         teamNumber: z.number().int().positive().optional(),
@@ -112,8 +110,8 @@ export const superadminRouter = createTRPCRouter({
         .insert(agents)
         .values({
           userId: input.userId,
-          firstName: input.firstName,
-          lastName: input.lastName,
+          firstName: "",
+          lastName: "",
           email: input.email.toLowerCase(),
           team: input.team,
           teamNumber: input.teamNumber ?? null,
