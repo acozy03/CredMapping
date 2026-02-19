@@ -45,6 +45,20 @@ type ProviderSort =
   | "expired_privs_desc"
   | "expired_privs_asc";
 
+type ProviderPrivilegeTier = NonNullable<
+  typeof providerVestaPrivileges.$inferSelect.privilegeTier
+>;
+
+const providerPrivilegeTiers: ProviderPrivilegeTier[] = [
+  "inactive",
+  "full",
+  "temp",
+  "in progress",
+];
+
+const isProviderPrivilegeTier = (value: string): value is ProviderPrivilegeTier =>
+  providerPrivilegeTiers.includes(value as ProviderPrivilegeTier);
+
 const isProviderSort = (value: string): value is ProviderSort =>
   ["name_asc", "name_desc", "expired_privs_desc", "expired_privs_asc"].includes(
     value,
@@ -112,7 +126,10 @@ export default async function ProvidersPage(props: {
     typeof searchParams?.doctorStatus === "string"
       ? searchParams.doctorStatus.trim()
       : "all";
-  const doctorStatusFilter = rawStatusFilter.length > 0 ? rawStatusFilter : "all";
+  const doctorStatusFilter =
+    rawStatusFilter.length > 0 && isProviderPrivilegeTier(rawStatusFilter)
+      ? rawStatusFilter
+      : "all";
 
   const pageSize = 10;
   const rawLimit = typeof searchParams?.limit === "string" ? searchParams.limit : `${pageSize}`;
@@ -259,10 +276,7 @@ export default async function ProvidersPage(props: {
       const doctorStatus = providerPrivileges[0]?.privilegeTier ?? "Unspecified";
       const expiredPrivileges = providerLicenses.reduce((count, license) => {
         if (!license.expiresAt) return count;
-        const expirationDate =
-          license.expiresAt instanceof Date
-            ? license.expiresAt
-            : new Date(license.expiresAt);
+        const expirationDate = new Date(license.expiresAt);
         if (Number.isNaN(expirationDate.getTime())) return count;
         return expirationDate < now ? count + 1 : count;
       }, 0);
