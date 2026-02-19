@@ -1,6 +1,6 @@
 import { requireRole } from "~/server/auth/route-access";
 
-export default async function AdminLayout({
+export default async function AgentManagementLayout({
   children,
 }: {
   children: React.ReactNode;

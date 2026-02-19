@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "~/trpc/react";
+import { createClient } from "~/utils/supabase/client";
 import { toast } from "sonner";
 import {
   ShieldCheck,
@@ -28,13 +29,14 @@ import {
 import {
   Dialog,
   DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
 } from "~/components/ui/dialog";
+import {
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "~/components/ui/app-modal";
 import {
   Select,
   SelectContent,
@@ -109,7 +111,9 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
     setSearch("");
   };
 
-  const selectedUser = users?.find((u) => u.id === selectedUserId);
+  const normalizedUsers = users ?? [];
+
+  const selectedUser = normalizedUsers.find((u) => u.id === selectedUserId);
 
   const handleAssign = () => {
     if (!selectedUserId || !selectedUser) return;
@@ -139,13 +143,10 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Assign Agent from User Pool</DialogTitle>
-          <DialogDescription>
-            Select a user, fill in their details, and assign a permission level.
-          </DialogDescription>
-        </DialogHeader>
+      <ModalContent>
+        <ModalHeader>
+          <ModalTitle>Assign Agent from User Pool</ModalTitle>
+        </ModalHeader>
 
         <div className="space-y-4 py-2">
           {/* Search users */}
@@ -167,12 +168,12 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
                 <div className="flex items-center justify-center p-4">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 </div>
-              ) : !users?.length ? (
+              ) : !normalizedUsers.length ? (
                 <p className="p-3 text-sm text-muted-foreground text-center">
                   No unassigned users found.
                 </p>
               ) : (
-                users.map((user) => (
+                normalizedUsers.map((user) => (
                   <button
                     key={user.id}
                     type="button"
@@ -263,7 +264,7 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
           )}
         </div>
 
-        <DialogFooter>
+        <ModalFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
@@ -278,8 +279,8 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
             )}
             Assign Agent
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </ModalFooter>
+      </ModalContent>
     </Dialog>
   );
 }
@@ -288,9 +289,11 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
 function ChangeRoleDialog({
   agent,
   onSuccess,
+  disabled = false,
 }: {
   agent: { id: string; firstName: string; lastName: string; role: string };
   onSuccess: () => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [newRole, setNewRole] = useState(agent.role);
@@ -309,27 +312,35 @@ function ChangeRoleDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5">
+        <Button variant="ghost" size="sm" className="gap-1.5" disabled={disabled}>
           <ShieldCheck className="h-3.5 w-3.5" />
           Change Role
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Change Role</DialogTitle>
-          <DialogDescription>
-            Update permissions for{" "}
-            <span className="font-medium">
-              {agent.firstName} {agent.lastName}
-            </span>
-          </DialogDescription>
-        </DialogHeader>
+      <ModalContent className="sm:max-w-sm">
+        <ModalHeader>
+          <ModalTitle>Change Role</ModalTitle>
+        </ModalHeader>
+
+        <p className="text-sm text-muted-foreground">
+          Update permissions for{" "}
+          <span className="font-medium">
+            {agent.firstName} {agent.lastName}
+          </span>
+        </p>
+
+        {disabled && (
+          <p className="text-xs text-muted-foreground">
+            You cannot change your own permission level.
+          </p>
+        )}
 
         <div className="py-4">
           <Select
             value={newRole}
             onValueChange={setNewRole}
+            disabled={disabled}
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -342,7 +353,7 @@ function ChangeRoleDialog({
           </Select>
         </div>
 
-        <DialogFooter>
+        <ModalFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
@@ -353,15 +364,15 @@ function ChangeRoleDialog({
                 role: newRole as "user" | "admin" | "superadmin",
               })
             }
-            disabled={newRole === agent.role || updateMutation.isPending}
+            disabled={disabled || newRole === agent.role || updateMutation.isPending}
           >
             {updateMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
             Save
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </ModalFooter>
+      </ModalContent>
     </Dialog>
   );
 }
@@ -370,9 +381,11 @@ function ChangeRoleDialog({
 function RemoveAgentDialog({
   agent,
   onSuccess,
+  disabled = false,
 }: {
   agent: { id: string; firstName: string; lastName: string };
   onSuccess: () => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -390,40 +403,52 @@ function RemoveAgentDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-destructive hover:text-destructive"
+          disabled={disabled}
+        >
           <Trash2 className="h-3.5 w-3.5" />
           Remove
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Remove Agent</DialogTitle>
-          <DialogDescription>
-            Are you sure you want to remove{" "}
-            <span className="font-medium">
-              {agent.firstName} {agent.lastName}
-            </span>{" "}
-            from the agent pool? This action cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
+      <ModalContent className="sm:max-w-sm">
+        <ModalHeader>
+          <ModalTitle>Remove Agent</ModalTitle>
+        </ModalHeader>
 
-        <DialogFooter>
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to remove{" "}
+          <span className="font-medium">
+            {agent.firstName} {agent.lastName}
+          </span>{" "}
+          from the agent pool? This action cannot be undone.
+        </p>
+
+        {disabled && (
+          <p className="text-xs text-muted-foreground">
+            You cannot remove your own account from agent management.
+          </p>
+        )}
+
+        <ModalFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
           <Button
             variant="destructive"
             onClick={() => removeMutation.mutate({ agentId: agent.id })}
-            disabled={removeMutation.isPending}
+            disabled={disabled || removeMutation.isPending}
           >
             {removeMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
             Remove
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </ModalFooter>
+      </ModalContent>
     </Dialog>
   );
 }
@@ -431,7 +456,21 @@ function RemoveAgentDialog({
 // ─── Main Page ──────────────────────────────────────────────────
 export default function SuperAdminPage() {
   const [search, setSearch] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const utils = api.useUtils();
+
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUserId(user?.id ?? null);
+    };
+
+    void loadCurrentUser();
+  }, []);
 
   const { data: agents, isLoading } = api.superadmin.listAgents.useQuery();
 
@@ -447,24 +486,13 @@ export default function SuperAdminPage() {
       a.email.toLowerCase().includes(q) ||
       a.firstName.toLowerCase().includes(q) ||
       a.lastName.toLowerCase().includes(q) ||
-      a.team.toLowerCase().includes(q)
+      (a.team?.toLowerCase().includes(q) ?? false)
     );
   });
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b pb-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-            Super Admin Panel
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Assign agents from the user pool and manage their permissions.
-          </p>
-        </div>
-
+      <div className="flex items-center justify-end">
         <AssignAgentDialog onSuccess={refetch} />
       </div>
 
@@ -527,8 +555,16 @@ export default function SuperAdminPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <ChangeRoleDialog agent={agent} onSuccess={refetch} />
-                      <RemoveAgentDialog agent={agent} onSuccess={refetch} />
+                      <ChangeRoleDialog
+                        agent={agent}
+                        onSuccess={refetch}
+                        disabled={agent.userId === currentUserId}
+                      />
+                      <RemoveAgentDialog
+                        agent={agent}
+                        onSuccess={refetch}
+                        disabled={agent.userId === currentUserId}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>

@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
 
@@ -5,7 +6,7 @@ import {
   createTRPCRouter,
   superAdminProcedure,
 } from "~/server/api/trpc";
-import { agents, users } from "~/server/db/schema";
+import { agents, authUsers, providers } from "~/server/db/schema";
 
 export const superadminRouter = createTRPCRouter({
   /**
@@ -44,31 +45,37 @@ export const superadminRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const allUsers = await ctx.db
         .select({
-          id: users.id,
-          email: users.email,
-          createdAt: users.createdAt,
+          id: authUsers.id,
+          email: authUsers.email,
+          createdAt: authUsers.createdAt,
         })
-        .from(users)
-        .orderBy(users.email);
+        .from(authUsers)
+        .where(sql`${authUsers.email} is not null`)
+        .orderBy(authUsers.email);
 
       // Get all agent emails to exclude already-assigned users
       const agentEmails = await ctx.db
         .select({ email: agents.email })
         .from(agents);
 
-      const assignedEmails = new Set(
-        agentEmails.map((a) => a.email.toLowerCase()),
-      );
+      const assignedEmails = new Set(agentEmails.map((a) => a.email.toLowerCase()));
 
-      let unassigned = allUsers.filter(
-        (u) => !assignedEmails.has(u.email.toLowerCase()),
+      const usersWithEmail = allUsers.flatMap((user) => {
+        if (!user.email) return [];
+
+        return {
+          ...user,
+          email: user.email,
+        };
+      });
+
+      let unassigned = usersWithEmail.filter(
+        (user) => !assignedEmails.has(user.email.toLowerCase()),
       );
 
       if (input?.search) {
         const q = input.search.toLowerCase();
-        unassigned = unassigned.filter((u) =>
-          u.email.toLowerCase().includes(q),
-        );
+        unassigned = unassigned.filter((user) => user.email.toLowerCase().includes(q));
       }
 
       return unassigned;
@@ -128,6 +135,23 @@ export const superadminRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const [targetAgent] = await ctx.db
+        .select({ userId: agents.userId })
+        .from(agents)
+        .where(eq(agents.id, input.agentId))
+        .limit(1);
+
+      if (!targetAgent) {
+        throw new Error("Agent not found.");
+      }
+
+      if (targetAgent.userId === ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You cannot change your own permission level.",
+        });
+      }
+
       const [updated] = await ctx.db
         .update(agents)
         .set({
@@ -150,6 +174,23 @@ export const superadminRouter = createTRPCRouter({
   removeAgent: superAdminProcedure
     .input(z.object({ agentId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const [targetAgent] = await ctx.db
+        .select({ userId: agents.userId })
+        .from(agents)
+        .where(eq(agents.id, input.agentId))
+        .limit(1);
+
+      if (!targetAgent) {
+        throw new Error("Agent not found.");
+      }
+
+      if (targetAgent.userId === ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You cannot remove your own account.",
+        });
+      }
+
       const [deleted] = await ctx.db
         .delete(agents)
         .where(eq(agents.id, input.agentId))
@@ -160,5 +201,37 @@ export const superadminRouter = createTRPCRouter({
       }
 
       return { success: true };
+    }),
+
+  /**
+   * Create a provider record.
+   */
+  createProvider: superAdminProcedure
+    .input(
+      z.object({
+        firstName: z.string().trim().min(1, "First name is required"),
+        middleName: z.string().trim().optional(),
+        lastName: z.string().trim().min(1, "Last name is required"),
+        degree: z.string().trim().optional(),
+        email: z.string().trim().email().optional(),
+        phone: z.string().trim().optional(),
+        notes: z.string().trim().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [newProvider] = await ctx.db
+        .insert(providers)
+        .values({
+          firstName: input.firstName,
+          middleName: input.middleName ?? null,
+          lastName: input.lastName,
+          degree: input.degree ?? null,
+          email: input.email?.toLowerCase() ?? null,
+          phone: input.phone ?? null,
+          notes: input.notes ?? null,
+        })
+        .returning();
+
+      return newProvider;
     }),
 });
