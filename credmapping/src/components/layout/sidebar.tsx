@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   BriefcaseMedical,
@@ -113,17 +112,10 @@ export function Sidebar({ userRole, initialSidebarMode }: SidebarProps) {
     <aside
       onMouseEnter={() => setIsHoveringSidebar(true)}
       onMouseLeave={() => setIsHoveringSidebar(false)}
-      className={`relative flex flex-col border-r bg-muted/30  duration-300 ease-in-out ${
+      className={`relative flex h-full flex-col border-r bg-muted/30 duration-300 ease-in-out ${
         isCollapsed ? "w-16" : "w-64"
       }`}
     >
-      <div className="h-16 overflow-hidden border-b px-4">
-        <div className="flex h-full items-center gap-3 font-semibold text-primary">
-          <Image src="/logo.png" alt="CredMapping+ logo" width={25} height={32} />
-          
-        </div>
-      </div>
-
       <nav className="mt-4 flex-1 space-y-2 overflow-hidden p-2">
         {!mounted ? (
           <div className="space-y-2 px-2">
