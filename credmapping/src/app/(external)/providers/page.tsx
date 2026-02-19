@@ -1,5 +1,5 @@
 import { desc, ilike, inArray, or, sql } from "drizzle-orm";
-import { Mail, Phone } from "lucide-react";
+import { ChevronDown, Mail, Phone } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 import { db } from "~/server/db";
@@ -33,6 +33,17 @@ const formatProviderName = (provider: {
 };
 
 const sanitizePhoneForHref = (value: string) => value.replace(/[^\d+]/g, "");
+
+type ProviderSort =
+  | "name_asc"
+  | "name_desc"
+  | "expired_privs_desc"
+  | "expired_privs_asc";
+
+const isProviderSort = (value: string): value is ProviderSort =>
+  ["name_asc", "name_desc", "expired_privs_desc", "expired_privs_asc"].includes(
+    value,
+  );
 
 const getPrivilegeTierTone = (privilegeTier: string | null) => {
   const normalizedTier = privilegeTier?.toLowerCase() ?? "";
@@ -87,7 +98,16 @@ export default async function ProvidersPage(props: {
   const searchParams = await props.searchParams;
   const rawSearch = searchParams?.search;
   const search = typeof rawSearch === "string" ? rawSearch.trim() : "";
-  const hasSearch = search.length >= 2;
+  const hasSearch = search.length > 0;
+  const rawSort =
+    typeof searchParams?.sort === "string" ? searchParams.sort : "";
+  const sort: ProviderSort = isProviderSort(rawSort) ? rawSort : "name_asc";
+  const rawStatusFilter =
+    typeof searchParams?.doctorStatus === "string"
+      ? searchParams.doctorStatus.trim()
+      : "all";
+  const doctorStatusFilter =
+    rawStatusFilter.length > 0 ? rawStatusFilter : "all";
 
   const providerRows = await db
     .select()
@@ -100,11 +120,11 @@ export default async function ProvidersPage(props: {
             ilike(providers.lastName, `%${search}%`),
             ilike(providers.email, `%${search}%`),
             ilike(providers.notes, `%${search}%`),
-            sql`concat_ws(' ' , ${providers.firstName}, ${providers.middleName}, ${providers.lastName}) ilike ${`%${search}%`}`
+            sql`concat_ws(' ' , ${providers.firstName}, ${providers.middleName}, ${providers.lastName}) ilike ${`%${search}%`}`,
           )
         : undefined,
     )
-    .orderBy(desc(providers.updatedAt), desc(providers.createdAt))
+    .orderBy(providers.lastName, providers.firstName, providers.middleName)
     .limit(100);
 
   const providerIds = providerRows.map((provider) => provider.id);
@@ -116,7 +136,10 @@ export default async function ProvidersPage(props: {
             .select()
             .from(stateLicenses)
             .where(inArray(stateLicenses.providerId, providerIds))
-            .orderBy(desc(stateLicenses.expiresAt), desc(stateLicenses.createdAt)),
+            .orderBy(
+              desc(stateLicenses.expiresAt),
+              desc(stateLicenses.createdAt),
+            ),
           db
             .select()
             .from(providerVestaPrivileges)
@@ -157,48 +180,194 @@ export default async function ProvidersPage(props: {
     credentialsByProvider.set(providerId, current);
   }
 
-  const pfcStatusBreakdown = credentialRows.reduce<Record<string, number>>((acc, credential) => {
-    const key = credential.status?.trim() ?? "Unspecified";
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
+  const pfcStatusBreakdown = credentialRows.reduce<Record<string, number>>(
+    (acc, credential) => {
+      const key = credential.status?.trim() ?? "Unspecified";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
+
+  const now = new Date();
+  const providerCards = providerRows.map((provider) => {
+    const providerLicenses = licensesByProvider.get(provider.id) ?? [];
+    const providerPrivileges = privilegesByProvider.get(provider.id) ?? [];
+    const providerCredentials = credentialsByProvider.get(provider.id) ?? [];
+    const doctorStatus = providerPrivileges[0]?.privilegeTier ?? "Unspecified";
+    const expiredPrivileges = providerLicenses.reduce((count, license) => {
+      if (!license.expiresAt) return count;
+      const expirationDate =
+        license.expiresAt instanceof Date
+          ? license.expiresAt
+          : new Date(license.expiresAt);
+      if (Number.isNaN(expirationDate.getTime())) return count;
+      return expirationDate < now ? count + 1 : count;
+    }, 0);
+
+    return {
+      provider,
+      providerLicenses,
+      providerPrivileges,
+      providerCredentials,
+      doctorStatus,
+      expiredPrivileges,
+      privilegeTierTone: getPrivilegeTierTone(
+        providerPrivileges[0]?.privilegeTier ?? null,
+      ),
+      displayName: formatProviderName(provider),
+    };
+  });
+
+  const statusOptions = Array.from(
+    new Set(providerCards.map((item) => item.doctorStatus)),
+  ).sort();
+
+  const filteredProviderCards = providerCards
+    .filter(
+      (item) =>
+        doctorStatusFilter === "all" ||
+        item.doctorStatus === doctorStatusFilter,
+    )
+    .sort((a, b) => {
+      if (sort === "name_desc") {
+        return b.displayName.localeCompare(a.displayName);
+      }
+
+      if (sort === "expired_privs_desc") {
+        return (
+          b.expiredPrivileges - a.expiredPrivileges ||
+          a.displayName.localeCompare(b.displayName)
+        );
+      }
+
+      if (sort === "expired_privs_asc") {
+        return (
+          a.expiredPrivileges - b.expiredPrivileges ||
+          a.displayName.localeCompare(b.displayName)
+        );
+      }
+
+      return a.displayName.localeCompare(b.displayName);
+    });
 
   return (
     <div className="space-y-6 pb-6">
       <div className="space-y-2 border-b pb-4">
         <h1 className="text-2xl font-semibold tracking-tight">Providers</h1>
-        <p className="text-sm text-muted-foreground">
-          Unified provider records with direct access to licenses, Vesta privileges, and PFC status.
+        <p className="text-muted-foreground text-sm">
+          Unified provider records with direct access to licenses, Vesta
+          privileges, and PFC status.
         </p>
         {hasSearch && (
-          <p className="text-xs text-muted-foreground">
-            Filtered by search: <span className="font-medium text-foreground">{search}</span>
+          <p className="text-muted-foreground text-xs">
+            Filtered by search:{" "}
+            <span className="text-foreground font-medium">{search}</span>
           </p>
         )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Provider records</p>
+        <div className="bg-card rounded-lg border p-4">
+          <p className="text-muted-foreground text-xs uppercase">
+            Provider records
+          </p>
           <p className="mt-2 text-2xl font-semibold">{providerRows.length}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">State licenses</p>
+        <div className="bg-card rounded-lg border p-4">
+          <p className="text-muted-foreground text-xs uppercase">
+            State licenses
+          </p>
           <p className="mt-2 text-2xl font-semibold">{licenseRows.length}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">Vesta privilege records</p>
+        <div className="bg-card rounded-lg border p-4">
+          <p className="text-muted-foreground text-xs uppercase">
+            Vesta privilege records
+          </p>
           <p className="mt-2 text-2xl font-semibold">{privilegeRows.length}</p>
         </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs uppercase text-muted-foreground">PFC records</p>
+        <div className="bg-card rounded-lg border p-4">
+          <p className="text-muted-foreground text-xs uppercase">PFC records</p>
           <p className="mt-2 text-2xl font-semibold">{credentialRows.length}</p>
         </div>
       </div>
 
+      <form
+        className="bg-card flex flex-col gap-3 rounded-lg border p-4 lg:flex-row lg:items-end"
+        method="get"
+      >
+        <div className="grid flex-1 gap-3 md:grid-cols-3">
+          <label className="space-y-1">
+            <span className="text-muted-foreground text-xs uppercase">
+              Sort providers
+            </span>
+            <select
+              className="bg-background h-9 w-full rounded-md border px-3 text-sm"
+              defaultValue={sort}
+              name="sort"
+            >
+              <option value="name_asc">Doctor name (A → Z)</option>
+              <option value="name_desc">Doctor name (Z → A)</option>
+              <option value="expired_privs_desc">
+                Expired privileges (high → low)
+              </option>
+              <option value="expired_privs_asc">
+                Expired privileges (low → high)
+              </option>
+            </select>
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-muted-foreground text-xs uppercase">
+              Doctor status
+            </span>
+            <select
+              className="bg-background h-9 w-full rounded-md border px-3 text-sm"
+              defaultValue={doctorStatusFilter}
+              name="doctorStatus"
+            >
+              <option value="all">All statuses</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-muted-foreground text-xs uppercase">
+              Search providers
+            </span>
+            <input
+              className="bg-background h-9 w-full rounded-md border px-3 text-sm"
+              defaultValue={search}
+              name="search"
+              placeholder="Search by name, email, or notes"
+              type="search"
+            />
+          </label>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            className="h-9 rounded-md border px-3 text-sm font-medium"
+            type="submit"
+          >
+            Apply
+          </button>
+          <a
+            className="h-9 rounded-md border px-3 py-2 text-sm font-medium"
+            href="/providers"
+          >
+            Reset
+          </a>
+        </div>
+      </form>
+
       {Object.keys(pfcStatusBreakdown).length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold uppercase text-muted-foreground">
+        <div className="bg-card rounded-lg border p-4">
+          <h2 className="text-muted-foreground mb-3 text-sm font-semibold uppercase">
             PFC status distribution
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -213,174 +382,227 @@ export default async function ProvidersPage(props: {
         </div>
       )}
 
-      {providerRows.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-sm text-muted-foreground">
+      {filteredProviderCards.length === 0 ? (
+        <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-sm">
           No providers found.
         </div>
       ) : (
         <VirtualScrollContainer>
           <div className="space-y-4 p-4">
-            {providerRows.map((provider) => {
-              const providerLicenses = licensesByProvider.get(provider.id) ?? [];
-              const providerPrivileges = privilegesByProvider.get(provider.id) ?? [];
-              const providerCredentials = credentialsByProvider.get(provider.id) ?? [];
-              const privilegeTierTone = getPrivilegeTierTone(
-                providerPrivileges[0]?.privilegeTier ?? null,
-              );
+            {filteredProviderCards.map((card) => {
+              const {
+                provider,
+                providerLicenses,
+                providerPrivileges,
+                providerCredentials,
+                privilegeTierTone,
+                displayName,
+              } = card;
               const hasEmail = Boolean(provider.email);
               const hasPhone = Boolean(provider.phone);
-              const phoneHref = provider.phone ? sanitizePhoneForHref(provider.phone) : "";
+              const phoneHref = provider.phone
+                ? sanitizePhoneForHref(provider.phone)
+                : "";
 
               return (
-                <section key={provider.id} className={`rounded-lg border bg-card ${privilegeTierTone}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
-                    <div>
-                      <h2 className="text-lg font-semibold">{formatProviderName(provider)}</h2>
-                      <p className="text-xs text-muted-foreground">Provider profile</p>
-                    </div>
-                    <div className="space-y-2 text-right text-sm text-muted-foreground">
-                      <div className="flex items-center justify-end gap-2">
-                        {hasEmail ? (
-                          <a
-                            className="text-foreground underline-offset-4 transition hover:underline"
-                            href={`mailto:${provider.email}`}
-                          >
-                            {provider.email}
-                          </a>
-                        ) : (
-                          <p>No email</p>
-                        )}
-                        <Mail className="size-4 text-muted-foreground" />
+                <section
+                  key={provider.id}
+                  className={`bg-card rounded-lg border ${privilegeTierTone}`}
+                >
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3 border-b p-4 [&::-webkit-details-marker]:hidden">
+                      <div className="flex items-center gap-2">
+                        <ChevronDown className="text-muted-foreground size-4 shrink-0 transition-transform duration-200 group-open:rotate-180" />
+                        <h2 className="text-lg font-semibold">{displayName}</h2>
                       </div>
-                      <div className="flex items-center justify-end gap-2">
-                        {hasPhone && phoneHref ? (
-                          <a
-                            className="text-foreground underline-offset-4 transition hover:underline"
-                            href={`tel:${phoneHref}`}
-                          >
-                            {provider.phone}
-                          </a>
+                      <div className="text-muted-foreground space-y-2 text-right text-sm">
+                        <div className="flex items-center justify-end gap-2">
+                          {hasEmail ? (
+                            <a
+                              className="text-foreground underline-offset-4 transition hover:underline"
+                              href={`mailto:${provider.email}`}
+                            >
+                              {provider.email}
+                            </a>
+                          ) : (
+                            <p>No email</p>
+                          )}
+                          <Mail className="text-muted-foreground size-4" />
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          {hasPhone && phoneHref ? (
+                            <a
+                              className="text-foreground underline-offset-4 transition hover:underline"
+                              href={`tel:${phoneHref}`}
+                            >
+                              {provider.phone}
+                            </a>
+                          ) : (
+                            <p>No phone</p>
+                          )}
+                          <Phone className="text-muted-foreground size-4" />
+                        </div>
+                      </div>
+                    </summary>
+
+                    <div className="grid gap-4 p-4 lg:grid-cols-4">
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground text-xs uppercase">
+                          General
+                        </p>
+                        <dl className="mt-2 space-y-1 text-sm">
+                          <div className="flex justify-between gap-2">
+                            <dt>Created</dt>
+                            <dd>{formatDate(provider.createdAt)}</dd>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <dt>Updated</dt>
+                            <dd>{formatDate(provider.updatedAt)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Notes</dt>
+                            <dd className="text-foreground line-clamp-3">
+                              {provider.notes ?? "—"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+
+                      <div className="rounded-md border p-3 lg:col-span-3">
+                        <p className="text-muted-foreground text-xs uppercase">
+                          State Licenses
+                        </p>
+                        {providerLicenses.length === 0 ? (
+                          <p className="text-muted-foreground mt-2 text-sm">
+                            No linked state licenses.
+                          </p>
                         ) : (
-                          <p>No phone</p>
+                          <div className="mt-2 overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead className="text-muted-foreground text-xs uppercase">
+                                <tr>
+                                  <th className="py-1 pr-3">state</th>
+                                  <th className="py-1 pr-3">status</th>
+                                  <th className="py-1 pr-3">issued</th>
+                                  <th className="py-1 pr-3">expires</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {providerLicenses.map((license) => (
+                                  <tr key={license.id} className="border-t">
+                                    <td className="py-1 pr-3">
+                                      {license.state ?? "—"}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {license.status ?? "—"}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {formatDate(license.issuedAt)}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      <span
+                                        className={getLicenseExpirationTone(
+                                          license.expiresAt,
+                                        )}
+                                      >
+                                        {formatDate(license.expiresAt)}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         )}
-                        <Phone className="size-4 text-muted-foreground" />
+                      </div>
+
+                      <div className="rounded-md border p-3 lg:col-span-2">
+                        <p className="text-muted-foreground text-xs uppercase">
+                          Vesta Privileges
+                        </p>
+                        {providerPrivileges.length === 0 ? (
+                          <p className="text-muted-foreground mt-2 text-sm">
+                            No linked Vesta privileges.
+                          </p>
+                        ) : (
+                          <div className="mt-2 overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead className="text-muted-foreground text-xs uppercase">
+                                <tr>
+                                  <th className="py-1 pr-3">tier</th>
+                                  <th className="py-1 pr-3">
+                                    initial approved
+                                  </th>
+                                  <th className="py-1 pr-3">initial expires</th>
+                                  <th className="py-1 pr-3">term date</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {providerPrivileges.map((privilege) => (
+                                  <tr key={privilege.id} className="border-t">
+                                    <td className="py-1 pr-3">
+                                      {privilege.privilegeTier ?? "—"}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {formatDate(privilege.initialApprovedAt)}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {formatDate(privilege.initialExpiresAt)}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {formatDate(privilege.termDate)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-md border p-3 lg:col-span-2">
+                        <p className="text-muted-foreground text-xs uppercase">
+                          PFC Statuses
+                        </p>
+                        {providerCredentials.length === 0 ? (
+                          <p className="text-muted-foreground mt-2 text-sm">
+                            No linked PFC records.
+                          </p>
+                        ) : (
+                          <div className="mt-2 overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead className="text-muted-foreground text-xs uppercase">
+                                <tr>
+                                  <th className="py-1 pr-3">priority</th>
+                                  <th className="py-1 pr-3">status</th>
+                                  <th className="py-1 pr-3">decision</th>
+                                  <th className="py-1 pr-3">requested</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {providerCredentials.map((credential) => (
+                                  <tr key={credential.id} className="border-t">
+                                    <td className="py-1 pr-3">
+                                      {credential.priority ?? "—"}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {credential.status ?? "—"}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {credential.decision ?? "—"}
+                                    </td>
+                                    <td className="py-1 pr-3">
+                                      {formatDate(credential.requestedAt)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="grid gap-4 p-4 lg:grid-cols-4">
-                    <div className="rounded-md border p-3">
-                      <p className="text-xs uppercase text-muted-foreground">General</p>
-                      <dl className="mt-2 space-y-1 text-sm">
-                        <div className="flex justify-between gap-2">
-                          <dt>Created</dt>
-                          <dd>{formatDate(provider.createdAt)}</dd>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <dt>Updated</dt>
-                          <dd>{formatDate(provider.updatedAt)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-muted-foreground">Notes</dt>
-                          <dd className="line-clamp-3 text-foreground">{provider.notes ?? "—"}</dd>
-                        </div>
-                      </dl>
-                    </div>
-
-                    <div className="rounded-md border p-3 lg:col-span-3">
-                      <p className="text-xs uppercase text-muted-foreground">State Licenses</p>
-                      {providerLicenses.length === 0 ? (
-                        <p className="mt-2 text-sm text-muted-foreground">No linked state licenses.</p>
-                      ) : (
-                        <div className="mt-2 overflow-x-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead className="text-xs text-muted-foreground uppercase">
-                              <tr>
-                                <th className="py-1 pr-3">state</th>
-                                <th className="py-1 pr-3">status</th>
-                                <th className="py-1 pr-3">issued</th>
-                                <th className="py-1 pr-3">expires</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {providerLicenses.map((license) => (
-                                <tr key={license.id} className="border-t">
-                                  <td className="py-1 pr-3">{license.state ?? "—"}</td>
-                                  <td className="py-1 pr-3">{license.status ?? "—"}</td>
-                                  <td className="py-1 pr-3">{formatDate(license.issuedAt)}</td>
-                                  <td className="py-1 pr-3">
-                                    <span className={getLicenseExpirationTone(license.expiresAt)}>
-                                      {formatDate(license.expiresAt)}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-md border p-3 lg:col-span-2">
-                      <p className="text-xs uppercase text-muted-foreground">Vesta Privileges</p>
-                      {providerPrivileges.length === 0 ? (
-                        <p className="mt-2 text-sm text-muted-foreground">No linked Vesta privileges.</p>
-                      ) : (
-                        <div className="mt-2 overflow-x-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead className="text-xs text-muted-foreground uppercase">
-                              <tr>
-                                <th className="py-1 pr-3">tier</th>
-                                <th className="py-1 pr-3">initial approved</th>
-                                <th className="py-1 pr-3">initial expires</th>
-                                <th className="py-1 pr-3">term date</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {providerPrivileges.map((privilege) => (
-                                <tr key={privilege.id} className="border-t">
-                                  <td className="py-1 pr-3">{privilege.privilegeTier ?? "—"}</td>
-                                  <td className="py-1 pr-3">{formatDate(privilege.initialApprovedAt)}</td>
-                                  <td className="py-1 pr-3">{formatDate(privilege.initialExpiresAt)}</td>
-                                  <td className="py-1 pr-3">{formatDate(privilege.termDate)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-md border p-3 lg:col-span-2">
-                      <p className="text-xs uppercase text-muted-foreground">PFC Statuses</p>
-                      {providerCredentials.length === 0 ? (
-                        <p className="mt-2 text-sm text-muted-foreground">No linked PFC records.</p>
-                      ) : (
-                        <div className="mt-2 overflow-x-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead className="text-xs text-muted-foreground uppercase">
-                              <tr>
-                                <th className="py-1 pr-3">priority</th>
-                                <th className="py-1 pr-3">status</th>
-                                <th className="py-1 pr-3">decision</th>
-                                <th className="py-1 pr-3">requested</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {providerCredentials.map((credential) => (
-                                <tr key={credential.id} className="border-t">
-                                  <td className="py-1 pr-3">{credential.priority ?? "—"}</td>
-                                  <td className="py-1 pr-3">{credential.status ?? "—"}</td>
-                                  <td className="py-1 pr-3">{credential.decision ?? "—"}</td>
-                                  <td className="py-1 pr-3">{formatDate(credential.requestedAt)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  </details>
                 </section>
               );
             })}
