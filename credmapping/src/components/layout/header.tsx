@@ -43,7 +43,13 @@ export function Header({ user }: { user: UserType }) {
     isCurrent: index === segments.length - 1,
   }));
 
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
+
+  const themeOptions = [
+    { value: "light", label: "Set light theme", icon: Sun },
+    { value: "dark", label: "Set dark theme", icon: Moon },
+    { value: "system", label: "Set system theme", icon: Monitor },
+  ] as const;
 
   const handleSignOut = () => {
     startTransition(async () => {
@@ -119,27 +125,25 @@ export function Header({ user }: { user: UserType }) {
               <DropdownMenuSeparator />
 
               <div className="flex items-center justify-center gap-1 px-1 py-1">
-                <DropdownMenuItem
-                  onClick={() => setTheme("light")}
-                  className="size-8 justify-center rounded-md p-0"
-                  aria-label="Set light theme"
-                >
-                  <Sun size={14} />
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setTheme("dark")}
-                  className="size-8 justify-center rounded-md p-0"
-                  aria-label="Set dark theme"
-                >
-                  <Moon size={14} />
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setTheme("system")}
-                  className="size-8 justify-center rounded-md p-0"
-                  aria-label="Set system theme"
-                >
-                  <Monitor size={14} />
-                </DropdownMenuItem>
+                {themeOptions.map((option) => {
+                  const Icon = option.icon;
+                  const isActive = theme === option.value;
+
+                  return (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => setTheme(option.value)}
+                      className={`size-8 justify-center rounded-md border p-0 ${
+                        isActive
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border bg-transparent text-muted-foreground"
+                      }`}
+                      aria-label={option.label}
+                    >
+                      <Icon size={14} />
+                    </DropdownMenuItem>
+                  );
+                })}
               </div>
 
               <DropdownMenuSeparator />
