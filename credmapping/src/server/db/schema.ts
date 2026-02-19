@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   pgPolicy,
+  pgSchema,
   pgTable,
   text,
   timestamp,
@@ -17,53 +18,62 @@ import { authenticatedRole } from "drizzle-orm/supabase";
 export const relatedTypeEnum = pgEnum("facility_or_provider", ["facility", "provider"]);
 export const initialOrRenewalEnum = pgEnum("initial_or_renewal", ["initial", "renewal"]);
 export const agentRoleEnum = pgEnum("agent_role", ["user", "admin", "superadmin"]);
-export const teamEnum = pgEnum("team_enum", ["IN", "US"]);
+export const teamEnum = pgEnum("team_location", ["IN", "US"]);
+export const privilegeTierEnum = pgEnum("privilege_tier", ["inactive", "full", "temp", "in progress"]);
+
 
 const isAdminOrSuperAdmin = sql`exists (
   select 1
   from public.agents a
-  where lower(a.email) = lower((auth.jwt() ->> 'email'))
+  where a.user_id = ((auth.jwt() ->> 'sub')::uuid)
     and a.role in ('admin', 'superadmin')
 )`;
 
-export const users = pgTable("users", {
+const authSchema = pgSchema("auth");
+
+export const authUsers = authSchema.table("users", {
   id: uuid("id").primaryKey().notNull(),
-  email: text("email").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  email: text("email"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
 });
+
+const allowAllForAuthenticated = sql`true`;
+
+const createAuthenticatedAllPolicy = (policyName: string) =>
+  pgPolicy(policyName, {
+    for: "all",
+    to: authenticatedRole,
+    using: allowAllForAuthenticated,
+    withCheck: allowAllForAuthenticated,
+  });
 
 export const agents = pgTable("agents", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").references(() => users.id),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email").notNull().unique(),
-  team: teamEnum("team").notNull(),
-  teamNumber: integer("team_number"),
+  team: teamEnum("team"),
+  teamNumber: bigint("team_num", { mode: "number" }),
   role: agentRoleEnum("role").default("user").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
-export const auditLog = pgTable(
-  "audit_log",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
 
-    tableName: text("table_name").notNull(),
-    recordId: uuid("record_id"),
-
-    action: text("action").notNull(),
-
-    actorId: uuid("actor_id").references(() => agents.id, { onDelete: "set null" }),
-    actorEmail: text("actor_email"),
-
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-
-    oldData: jsonb("old_data").default(sql`'{}'::jsonb`),
-    newData: jsonb("new_data").default(sql`'{}'::jsonb`),
-  },
-);
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tableName: text("table_name").notNull(),
+  recordId: uuid("record_id"),
+  action: text("action").notNull(),
+  actorId: uuid("actor_id").references(() => agents.id, { onDelete: "set null" }),
+  actorEmail: text("actor_email"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  oldData: jsonb("old_data").default(sql`'{}'::jsonb`),
+  newData: jsonb("new_data").default(sql`'{}'::jsonb`),
+});
 
 export const facilities = pgTable("facilities", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -100,26 +110,22 @@ export const workflowPhases = pgTable("workflow_phases", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const commLogs = pgTable(
-  "comm_logs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    relatedType: relatedTypeEnum("related_type"),
-    relatedId: uuid("related_id"),
-    kind: text("kind"),
-    subject: text("subject"),
-    status: text("status"),
-    requestedAt: date("requested_at"),
-    lastFollowupAt: date("last_followup_at"),
-    nextFollowupAt: date("next_followup_at"),
-    receivedAt: date("received_at"),
-    notes: text("notes"),
-    createdBy: uuid("created_by").references(() => agents.id),
-    lastUpdatedBy: uuid("last_updated_by").references(() => agents.id),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-    zohoTicketId: text("zoho_ticket_id"),
-    updatedAt: timestamp("updated_at", { withTimezone: true }),
-  });
+export const commLogs = pgTable("comm_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  relatedType: relatedTypeEnum("related_type"),
+  relatedId: uuid("related_id"),
+  subject: text("subject"),
+  status: text("status"),
+  requestedAt: date("requested_at"),
+  lastFollowupAt: date("last_followup_at"),
+  nextFollowupAt: date("next_followup_at"),
+  receivedAt: date("received_at"),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => agents.id),
+  lastUpdatedBy: uuid("last_updated_by").references(() => agents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
 
 export const configEnums = pgTable("config_enums", {
   key: text("key").primaryKey(),
@@ -222,7 +228,7 @@ export const prelivePipeline = pgTable("prelive_pipeline", {
 export const providerVestaPrivileges = pgTable("provider_vesta_privileges", {
   id: uuid("id").defaultRandom().primaryKey(),
   providerId: uuid("provider_id").references(() => providers.id),
-  privilegeTier: text("privilege_tier"),
+  privilegeTier: privilegeTierEnum("privilege_tier"),
   tempApprovedAt: date("temp_approved_at"),
   tempExpiresAt: date("temp_expires_at"),
   initialApprovedAt: date("initial_approved_at"),
@@ -280,137 +286,38 @@ export const teamAndAgentTasks = pgTable("team_and_agent_tasks", {
 
 export const nowSql = sql`now()`;
 
-// export const commLogsSelectAdmin = pgPolicy("comm_logs_admin_all", {
-//   for: "all",
-//   to: authenticatedRole,
-//   using: isAdminOrSuperAdmin,
-// }).link(commLogs);
+export const agentsAuthenticatedAll = createAuthenticatedAllPolicy("agents_authenticated_all").link(agents);
 
+export const auditLogAuthenticatedAll = createAuthenticatedAllPolicy("audit_log_authenticated_all").link(auditLog);
 
+export const facilitiesAuthenticatedAll = createAuthenticatedAllPolicy("facilities_authenticated_all").link(facilities);
 
-const isAgent = sql`
-  EXISTS (
-    SELECT 1
-    FROM agents a
-    WHERE a.user_id = auth.uid()
-  )
-`;
+export const providersAuthenticatedAll = createAuthenticatedAllPolicy("providers_authenticated_all").link(providers);
 
+export const workflowPhasesAuthenticatedAll = createAuthenticatedAllPolicy("workflow_phases_authenticated_all").link(workflowPhases);
 
+export const configEnumsAuthenticatedAll = createAuthenticatedAllPolicy("config_enums_authenticated_all").link(configEnums);
 
-//agentsPolicy
-export const agentsPolicy = pgPolicy("agents_agent_access", {
+export const facilityContactsAuthenticatedAll = createAuthenticatedAllPolicy("facility_contacts_authenticated_all").link(facilityContacts);
+
+export const incidentLogsAuthenticatedAll = createAuthenticatedAllPolicy("incident_logs_authenticated_all").link(incidentLogs);
+
+export const providerFacilityCredentialsAuthenticatedAll = createAuthenticatedAllPolicy("provider_facility_credentials_authenticated_all").link(providerFacilityCredentials);
+
+export const pfcWorkflowsAuthenticatedAll = createAuthenticatedAllPolicy("pfc_workflows_authenticated_all").link(pfcWorkflows);
+
+export const prelivePipelineAuthenticatedAll = createAuthenticatedAllPolicy("prelive_pipeline_authenticated_all").link(prelivePipeline);
+
+export const providerVestaPrivilegesAuthenticatedAll = createAuthenticatedAllPolicy("provider_vesta_privileges_authenticated_all").link(providerVestaPrivileges);
+
+export const stateLicenseWorkflowsAuthenticatedAll = createAuthenticatedAllPolicy("state_license_workflows_authenticated_all").link(stateLicenseWorkflows);
+
+export const stateLicensesAuthenticatedAll = createAuthenticatedAllPolicy("state_licenses_authenticated_all").link(stateLicenses);
+
+export const teamAndAgentTasksAuthenticatedAll = createAuthenticatedAllPolicy("team_and_agent_tasks_authenticated_all").link(teamAndAgentTasks);
+
+export const commLogsSelectAdmin = pgPolicy("comm_logs_admin_all", {
   for: "all",
   to: authenticatedRole,
-  using: isAgent,
-}).link(agents);
-
-//audit_log policy
-export const auditLogPolicy = pgPolicy("audit_log_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(auditLog);
-
-//comm_logs policy: 
-export const commLogsPolicy = pgPolicy("comm_logs_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
+  using: isAdminOrSuperAdmin,
 }).link(commLogs);
-
-//config_enums policy
-export const configEnumsPolicy = pgPolicy("config_enums_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(configEnums);
-
-//facilities policy
-export const facilitiesPolicy = pgPolicy("facilities_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(facilities);
-
-//facility_contacts policy
-export const facilityContactsPolicy = pgPolicy("facility_contacts_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(facilityContacts);
-
-//incident_logs policy
-export const incidentLogsPolicy = pgPolicy("incident_logs_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(incidentLogs);
-
-//pfc_workflows policy
-export const pfcWorkflowsPolicy = pgPolicy("pfc_workflows_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(pfcWorkflows);
-
-//prelive_pipeline policy
-export const prelivePipelinePolicy = pgPolicy("prelive_pipeline_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(prelivePipeline);
-
-//provider_facility_credentials policy
-export const providerFacilityCredentialsPolicy = pgPolicy("provider_facility_credentials_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(providerFacilityCredentials);
-
-//provider_vesta_privileges policy
-export const providerVestaPrivilegesPolicy = pgPolicy("provider_vesta_privileges_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(providerVestaPrivileges);
-
-//providers policy
-export const providersPolicy = pgPolicy("providers_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(providers);
-
-//state_license_workflows policy
-export const stateLicenseWorkflowsPolicy = pgPolicy("state_license_workflows_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(stateLicenseWorkflows);
-
-//state_licenses policy
-export const stateLicensesPolicy = pgPolicy("state_licenses_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(stateLicenses);
-
-//team_and_agent_tasks policy
-export const teamAndAgentTasksPolicy = pgPolicy("team_and_agent_tasks_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(teamAndAgentTasks);
-
-//workflow_phases policy
-export const workflowPhasesPolicy = pgPolicy("workflow_phases_agent_access", {
-  for: "all",
-  to: authenticatedRole,
-  using: isAgent,
-}).link(workflowPhases);
-
-
-
-
-
