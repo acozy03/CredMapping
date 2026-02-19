@@ -8,7 +8,7 @@
  */
 import { createServerClient } from "@supabase/ssr";
 import { TRPCError, initTRPC } from "@trpc/server";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
@@ -69,20 +69,19 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   } = await supabase.auth.getUser();
 
   const authenticatedUser = user && isAllowedEmail(user.email) ? user : null;
-  const normalizedEmail = authenticatedUser?.email?.toLowerCase();
 
-  const [agent] = authenticatedUser && normalizedEmail
+  const [agent] = authenticatedUser
     ? await withRls({
         jwtClaims: {
           sub: authenticatedUser.id,
-          email: normalizedEmail,
+          email: authenticatedUser.email?.toLowerCase() ?? "",
           role: "authenticated",
         },
         run: (tx) =>
           tx
             .select({ role: agents.role })
             .from(agents)
-            .where(eq(sql`lower(${agents.email})`, normalizedEmail))
+            .where(eq(agents.userId, authenticatedUser.id))
             .limit(1),
       })
     : [];
@@ -91,9 +90,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
     db,
     user: authenticatedUser,
     appRole: authenticatedUser
-      ? getAppRole({
-          agentRole: agent?.role,
-        })
+      ? getAppRole({ agentRole: agent?.role })
       : "user",
     ...opts,
   };
@@ -150,11 +147,11 @@ export const createTRPCRouter = t.router;
 const timingMiddleware = t.middleware(async ({ next, path }) => {
   const start = Date.now();
 
-  if (t._config.isDev) {
-    // artificial delay in dev
-    const waitMs = Math.floor(Math.random() * 400) + 100;
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-  }
+  // if (t._config.isDev) {
+  //   // artificial delay in dev
+  //   const waitMs = Math.floor(Math.random() * 400) + 100;
+  //   await new Promise((resolve) => setTimeout(resolve, waitMs));
+  // }
 
   const result = await next();
 
@@ -184,4 +181,15 @@ export const protectedProcedure = publicProcedure.use(({ ctx, next }) => {
       user: ctx.user,
     },
   });
+});
+
+export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.appRole !== "superadmin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Super admin access required.",
+    });
+  }
+
+  return next({ ctx });
 });
