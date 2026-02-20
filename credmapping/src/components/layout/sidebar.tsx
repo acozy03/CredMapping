@@ -7,6 +7,7 @@ import {
   BriefcaseMedical,
   Building2,
   LayoutDashboard,
+  Mail,
   Settings2,
   ShieldCheck,
   Workflow,
@@ -45,6 +46,12 @@ const sidebarItems = [
     name: "Providers",
     href: "/providers",
     icon: BriefcaseMedical,
+    roles: ["user", "admin", "superadmin"],
+  },
+  {
+    name: "Comm Logs",
+    href: "/comm-logs",
+    icon: Mail,
     roles: ["user", "admin", "superadmin"],
   },
   // Internal
@@ -159,43 +166,45 @@ export function Sidebar({ userRole, initialSidebarMode }: SidebarProps) {
         )}
       </nav>
 
-      <div className="overflow-hidden border-t p-2">
-        <DropdownMenu>
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-3"
-                >
-                  <Settings2 className="h-5 w-5 shrink-0" />
-                  <span
-                    className={`whitespace-nowrap transition-all duration-200 ${
-                      isCollapsed ? "invisible w-0 opacity-0" : "visible w-auto opacity-100"
-                    }`}
+      {mounted && (
+        <div className="overflow-hidden border-t p-2">
+          <DropdownMenu>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-3"
                   >
-                    Sidebar control
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            {isCollapsed && <TooltipContent side="right">Sidebar control</TooltipContent>}
-          </Tooltip>
+                    <Settings2 className="h-5 w-5 shrink-0" />
+                    <span
+                      className={`whitespace-nowrap transition-all duration-200 ${
+                        isCollapsed ? "invisible w-0 opacity-0" : "visible w-auto opacity-100"
+                      }`}
+                    >
+                      Sidebar control
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              {isCollapsed && <TooltipContent side="right">Sidebar control</TooltipContent>}
+            </Tooltip>
 
-          <DropdownMenuContent side="top" align="start" className="w-52">
-            <DropdownMenuLabel>Sidebar control</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuRadioGroup
-              value={sidebarMode}
-              onValueChange={(value) => setMode(value as SidebarMode)}
-            >
-              <DropdownMenuRadioItem value="expanded">Expanded</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="collapsed">Collapsed</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="hover">Expand on hover</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            <DropdownMenuContent side="top" align="start" className="w-52">
+              <DropdownMenuLabel>Sidebar control</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={sidebarMode}
+                onValueChange={(value) => setMode(value as SidebarMode)}
+              >
+                <DropdownMenuRadioItem value="expanded">Expanded</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="collapsed">Collapsed</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="hover">Expand on hover</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </aside>
   );
 }
