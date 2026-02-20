@@ -47,6 +47,14 @@ export function FacilityDetail({
     "logs" | "cred-docs" | "non-cred-docs" | "contacts"
   >("logs");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<{
+    id: string;
+    commType: string | null;
+    subject: string | null;
+    notes: string | null;
+    status: string | null;
+    nextFollowupAt: Date | string | null;
+  } | null>(null);
   const [selectedCommType, setSelectedCommType] = useState<string>("all");
   const [selectedAgent, setSelectedAgent] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -329,7 +337,13 @@ export function FacilityDetail({
               </Sheet>
 
               {canCreateLog && (
-                <Button className="h-9" onClick={() => setIsModalOpen(true)}>
+                <Button
+                  className="h-9"
+                  onClick={() => {
+                    setEditingLog(null);
+                    setIsModalOpen(true);
+                  }}
+                >
                   + Add Comm Log
                 </Button>
               )}
@@ -350,7 +364,15 @@ export function FacilityDetail({
                 })) || []
               }
               isLoading={logsLoading}
-              onNewLog={() => setIsModalOpen(true)}
+              onNewLog={() => {
+                setEditingLog(null);
+                setIsModalOpen(true);
+              }}
+              onSelectLog={(log) => {
+                if (!canCreateLog) return;
+                setEditingLog(log);
+                setIsModalOpen(true);
+              }}
             />
           </div>
         )}
@@ -398,7 +420,22 @@ export function FacilityDetail({
                         .trim();
 
                       return (
-                        <tr key={doc.id} className="hover:bg-zinc-900/50">
+                        <tr
+                          key={doc.id}
+                          className={`hover:bg-zinc-900/50 ${canCreateLog ? "cursor-pointer" : ""}`}
+                          onClick={() => {
+                            if (!canCreateLog) return;
+                            setEditingLog({
+                              id: doc.id,
+                              commType: doc.commType ?? "Document",
+                              subject: doc.subject,
+                              notes: doc.notes,
+                              status: doc.status,
+                              nextFollowupAt: doc.nextFollowupAt,
+                            });
+                            setIsModalOpen(true);
+                          }}
+                        >
                           <td className="px-4 py-3">
                             <span
                               className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
@@ -506,7 +543,22 @@ export function FacilityDetail({
                         .trim();
 
                       return (
-                        <tr key={doc.id} className="hover:bg-zinc-900/50">
+                        <tr
+                          key={doc.id}
+                          className={`hover:bg-zinc-900/50 ${canCreateLog ? "cursor-pointer" : ""}`}
+                          onClick={() => {
+                            if (!canCreateLog) return;
+                            setEditingLog({
+                              id: doc.id,
+                              commType: doc.commType ?? "Document",
+                              subject: doc.subject,
+                              notes: doc.notes,
+                              status: doc.status,
+                              nextFollowupAt: doc.nextFollowupAt,
+                            });
+                            setIsModalOpen(true);
+                          }}
+                        >
                           <td className="px-4 py-3">
                             <span
                               className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
@@ -693,7 +745,11 @@ export function FacilityDetail({
 
       <NewLogModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        editingLog={editingLog}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingLog(null);
+        }}
         relatedId={facilityId}
         relatedType="facility"
         onLogCreated={handleLogCreated}

@@ -184,6 +184,48 @@ export const commLogsRouter = createTRPCRouter({
     }),
 
   /**
+   * Update an existing comm log entry
+   */
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        commType: z.string(),
+        subject: z.string().optional(),
+        notes: z.string().optional(),
+        status: z.string().optional(),
+        requestedAt: z.string().optional(),
+        lastFollowupAt: z.string().optional(),
+        nextFollowupAt: z.string().optional(),
+        receivedAt: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db
+        .update(commLogs)
+        .set({
+          commType: input.commType,
+          subject: input.subject ?? null,
+          notes: input.notes ?? null,
+          status: input.status ?? null,
+          requestedAt: input.requestedAt ? new Date(input.requestedAt) : null,
+          lastFollowupAt: input.lastFollowupAt
+            ? new Date(input.lastFollowupAt)
+            : null,
+          nextFollowupAt: input.nextFollowupAt
+            ? new Date(input.nextFollowupAt)
+            : null,
+          receivedAt: input.receivedAt ? new Date(input.receivedAt) : null,
+          lastUpdatedBy: String(ctx.user.id),
+          updatedAt: new Date(),
+        } as never)
+        .where(eq(commLogs.id, input.id))
+        .returning();
+
+      return result[0];
+    }),
+
+  /**
    * Get summary stats for a provider
    */
   getProviderSummary: protectedProcedure
@@ -281,6 +323,7 @@ export const commLogsRouter = createTRPCRouter({
       const allLogs = await ctx.db
         .select({
           id: commLogs.id,
+          commType: commLogs.commType,
           subject: commLogs.subject,
           status: commLogs.status,
           notes: commLogs.notes,

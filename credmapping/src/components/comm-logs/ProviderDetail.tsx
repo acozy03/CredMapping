@@ -32,6 +32,14 @@ interface ProviderDetailProps {
 export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
   const [activeTab, setActiveTab] = useState<"logs" | "psv" | "notes">("logs");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<{
+    id: string;
+    commType: string | null;
+    subject: string | null;
+    notes: string | null;
+    status: string | null;
+    nextFollowupAt: Date | string | null;
+  } | null>(null);
   const [selectedCommType, setSelectedCommType] = useState<string>("all");
   const [selectedAgent, setSelectedAgent] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -284,7 +292,13 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
               </Sheet>
 
               {canCreateLog && (
-                <Button className="h-9" onClick={() => setIsModalOpen(true)}>
+                <Button
+                  className="h-9"
+                  onClick={() => {
+                    setEditingLog(null);
+                    setIsModalOpen(true);
+                  }}
+                >
                   + Add Comm Log
                 </Button>
               )}
@@ -305,7 +319,14 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
                 })) || []
               }
               isLoading={logsLoading}
-              onNewLog={() => setIsModalOpen(true)}
+              onNewLog={() => {
+                setEditingLog(null);
+                setIsModalOpen(true);
+              }}
+              onSelectLog={(log) => {
+                setEditingLog(log);
+                setIsModalOpen(true);
+              }}
             />
           </div>
         )}
@@ -413,7 +434,11 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
 
       <NewLogModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        editingLog={editingLog}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingLog(null);
+        }}
         relatedId={providerId}
         relatedType="provider"
         onLogCreated={handleLogCreated}

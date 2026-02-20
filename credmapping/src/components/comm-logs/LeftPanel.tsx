@@ -83,7 +83,7 @@ export function LeftPanel({
         {/* Search */}
         <input
           type="text"
-          placeholder={`Search ${mode}s...`}
+          placeholder={mode === "facility" ? "Search facilities..." : "Search providers..."}
           value={search}
           onChange={(e) => onSearchChange?.(e.target.value)}
           className="w-full rounded border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -120,7 +120,7 @@ export function LeftPanel({
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="p-4 text-center text-zinc-400 text-sm">
-            No {mode}s found
+            No {mode === "facility" ? "facilities" : "providers"} found
           </div>
         ) : (
           <div className="p-2">

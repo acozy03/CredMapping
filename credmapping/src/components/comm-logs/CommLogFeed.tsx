@@ -18,9 +18,15 @@ interface CommLogFeedProps {
   logs: CommLog[];
   isLoading?: boolean;
   onNewLog?: () => void;
+  onSelectLog?: (log: CommLog) => void;
 }
 
-export function CommLogFeed({ logs, isLoading = false, onNewLog }: CommLogFeedProps) {
+export function CommLogFeed({
+  logs,
+  isLoading = false,
+  onNewLog,
+  onSelectLog,
+}: CommLogFeedProps) {
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -61,6 +67,7 @@ export function CommLogFeed({ logs, isLoading = false, onNewLog }: CommLogFeedPr
           nextFollowupAt={log.nextFollowupAt}
           createdByName={log.createdByName}
           lastUpdatedByName={log.lastUpdatedByName}
+          onClick={() => onSelectLog?.(log)}
         />
       ))}
     </div>
