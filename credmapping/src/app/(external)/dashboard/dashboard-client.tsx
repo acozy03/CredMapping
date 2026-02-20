@@ -13,6 +13,7 @@ import { cn } from "~/lib/utils";
 type ViewKey = "providerFacility" | "facilityProvider" | "facilityPrelive" | "providerLicense";
 type SortDirection = "asc" | "desc";
 type GroupSortField = "name" | "updated";
+type BooleanFilter = "all" | "yes" | "no";
 type DetailSortField =
   | "facility"
   | "provider"
@@ -94,6 +95,28 @@ const viewButtons: Array<{ key: ViewKey; label: string }> = [
 ];
 
 const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+const PRIORITY_ORDER = ["superstat", "stat", "top", "high", "medium"] as const;
+
+const priorityRank = (value: string | null | undefined) => {
+  const normalized = normalize(value).replace(/[^a-z]/g, "");
+  const index = PRIORITY_ORDER.findIndex((priority) => priority === normalized);
+  return index === -1 ? PRIORITY_ORDER.length : index;
+};
+
+const sortPriorities = (values: string[]) =>
+  [...values].sort((a, b) => {
+    const rankA = priorityRank(a);
+    const rankB = priorityRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b);
+  });
+
+const matchesBooleanFilter = (value: boolean | null, filter: BooleanFilter) => {
+  if (filter === "all") return true;
+  if (filter === "yes") return value === true;
+  return value === false;
+};
+
 const formatDate = (value: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
@@ -159,7 +182,7 @@ function rowsMatchSearch(rows: ProviderFacilityRow[] | FacilityPreliveRow[] | Pr
 function SortableHeader({ label, field, activeField, direction, onSort }: { label: string; field: DetailSortField; activeField: DetailSortField | null; direction: SortDirection; onSort: (field: DetailSortField) => void }) {
   const isActive = field === activeField;
   return (
-    <th className="p-2 text-left font-medium">
+    <th className="sticky top-0 z-10 bg-muted/95 p-2 text-left font-medium backdrop-blur-sm">
       <button type="button" onClick={() => onSort(field)} className="inline-flex items-center gap-1 text-left hover:text-foreground">
         {label}
         {isActive ? direction === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" /> : null}
@@ -174,18 +197,68 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
   const [rightSearch, setRightSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [facilityTypeFilter, setFacilityTypeFilter] = useState("all");
+  const [applicationFilter, setApplicationFilter] = useState<BooleanFilter>("all");
+  const [facilityStateFilter, setFacilityStateFilter] = useState("all");
+  const [tempsPossibleFilter, setTempsPossibleFilter] = useState<BooleanFilter>("all");
+  const [payorEnrollmentFilter, setPayorEnrollmentFilter] = useState<BooleanFilter>("all");
+  const [licensePathFilter, setLicensePathFilter] = useState("all");
+  const [licenseCycleFilter, setLicenseCycleFilter] = useState("all");
   const [groupSortField, setGroupSortField] = useState<GroupSortField>("updated");
   const [groupSortDirection, setGroupSortDirection] = useState<SortDirection>("desc");
   const [detailSortField, setDetailSortField] = useState<DetailSortField | null>(null);
   const [detailSortDirection, setDetailSortDirection] = useState<SortDirection>("asc");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const allPriorities = useMemo(() => Array.from(new Set([...providerFacilityRows.map((r) => r.priority), ...facilityPreliveRows.map((r) => r.priority), ...providerLicenseRows.map((r) => r.priority)].filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [facilityPreliveRows, providerFacilityRows, providerLicenseRows]);
+  const allPriorities = useMemo(
+    () =>
+      sortPriorities(
+        Array.from(
+          new Set([...providerFacilityRows.map((r) => r.priority), ...facilityPreliveRows.map((r) => r.priority), ...providerLicenseRows.map((r) => r.priority)].filter(Boolean) as string[]),
+        ),
+      ),
+    [facilityPreliveRows, providerFacilityRows, providerLicenseRows],
+  );
   const allStatuses = useMemo(() => Array.from(new Set([...providerFacilityRows.map((r) => r.decision), ...providerLicenseRows.map((r) => r.status)].filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerFacilityRows, providerLicenseRows]);
+  const allFacilityTypes = useMemo(() => Array.from(new Set(providerFacilityRows.map((row) => row.facilityType).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerFacilityRows]);
+  const allFacilityStates = useMemo(() => Array.from(new Set([...providerFacilityRows.map((row) => row.facilityState), ...facilityPreliveRows.map((row) => row.facilityState)].filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [facilityPreliveRows, providerFacilityRows]);
+  const allLicensePaths = useMemo(() => Array.from(new Set(providerLicenseRows.map((row) => row.path).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerLicenseRows]);
+  const allLicenseCycles = useMemo(() => Array.from(new Set(providerLicenseRows.map((row) => row.initialOrRenewal).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerLicenseRows]);
 
-  const filteredProviderFacility = useMemo(() => providerFacilityRows.filter((row) => (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter)) && (statusFilter === "all" || normalize(row.decision) === normalize(statusFilter))), [priorityFilter, providerFacilityRows, statusFilter]);
-  const filteredPrelive = useMemo(() => facilityPreliveRows.filter((row) => priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter)), [facilityPreliveRows, priorityFilter]);
-  const filteredLicenses = useMemo(() => providerLicenseRows.filter((row) => (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter)) && (statusFilter === "all" || normalize(row.status) === normalize(statusFilter))), [priorityFilter, providerLicenseRows, statusFilter]);
+  const filteredProviderFacility = useMemo(
+    () =>
+      providerFacilityRows.filter(
+        (row) =>
+          (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter))
+          && (statusFilter === "all" || normalize(row.decision) === normalize(statusFilter))
+          && (facilityTypeFilter === "all" || normalize(row.facilityType) === normalize(facilityTypeFilter))
+          && matchesBooleanFilter(row.applicationRequired, applicationFilter)
+          && (facilityStateFilter === "all" || normalize(row.facilityState) === normalize(facilityStateFilter)),
+      ),
+    [applicationFilter, facilityStateFilter, facilityTypeFilter, priorityFilter, providerFacilityRows, statusFilter],
+  );
+  const filteredPrelive = useMemo(
+    () =>
+      facilityPreliveRows.filter(
+        (row) =>
+          (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter))
+          && (facilityStateFilter === "all" || normalize(row.facilityState) === normalize(facilityStateFilter))
+          && matchesBooleanFilter(row.tempsPossible, tempsPossibleFilter)
+          && matchesBooleanFilter(row.payorEnrollmentRequired, payorEnrollmentFilter),
+      ),
+    [facilityPreliveRows, facilityStateFilter, payorEnrollmentFilter, priorityFilter, tempsPossibleFilter],
+  );
+  const filteredLicenses = useMemo(
+    () =>
+      providerLicenseRows.filter(
+        (row) =>
+          (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter))
+          && (statusFilter === "all" || normalize(row.status) === normalize(statusFilter))
+          && (licensePathFilter === "all" || normalize(row.path) === normalize(licensePathFilter))
+          && (licenseCycleFilter === "all" || normalize(row.initialOrRenewal) === normalize(licenseCycleFilter)),
+      ),
+    [licenseCycleFilter, licensePathFilter, priorityFilter, providerLicenseRows, statusFilter],
+  );
 
   const providerGroups = useMemo(() => {
     const grouped = groupBy(
@@ -279,7 +352,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
       return sortByDirection(rows as ProviderFacilityRow[], detailSortDirection, (row) => {
         if (detailSortField === "facility") return row.facilityName;
         if (detailSortField === "provider") return row.providerName;
-        if (detailSortField === "priority") return row.priority ?? "";
+        if (detailSortField === "priority") return priorityRank(row.priority);
         if (detailSortField === "privileges") return row.privileges ?? "";
         if (detailSortField === "status") return row.decision ?? "";
         if (detailSortField === "type") return row.facilityType ?? "";
@@ -290,7 +363,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
     if (view === "providerLicense") {
       return sortByDirection(rows as ProviderLicenseRow[], detailSortDirection, (row) => {
         if (detailSortField === "state") return row.state ?? "";
-        if (detailSortField === "priority") return row.priority ?? "";
+        if (detailSortField === "priority") return priorityRank(row.priority);
         if (detailSortField === "path") return row.path ?? "";
         if (detailSortField === "status") return row.status ?? "";
         if (detailSortField === "initialOrRenewal") return row.initialOrRenewal ?? "";
@@ -314,6 +387,13 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
   const resetFilters = () => {
     setPriorityFilter("all");
     setStatusFilter("all");
+    setFacilityTypeFilter("all");
+    setApplicationFilter("all");
+    setFacilityStateFilter("all");
+    setTempsPossibleFilter("all");
+    setPayorEnrollmentFilter("all");
+    setLicensePathFilter("all");
+    setLicenseCycleFilter("all");
     setGroupSortField("updated");
     setGroupSortDirection("desc");
     setDetailSortField(null);
@@ -354,10 +434,10 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
             <SheetContent>
               <SheetHeader>
                 <SheetTitle>Dashboard filters</SheetTitle>
-                <SheetDescription>Filter and sort all views from one panel.</SheetDescription>
+                <SheetDescription>Filter and sort the active dashboard view.</SheetDescription>
               </SheetHeader>
 
-              <div className="flex flex-1 flex-col gap-4 overflow-auto px-4 pb-4">
+              <div className="hide-scrollbar flex flex-1 flex-col gap-4 overflow-auto px-4 pb-4">
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Filtering</h3>
                   <div className="grid grid-cols-[130px_1fr] items-center gap-3">
@@ -370,16 +450,109 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-[130px_1fr] items-center gap-3">
-                    <label className="text-sm text-muted-foreground">Status</label>
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        {allStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {(view === "providerFacility" || view === "facilityProvider" || view === "providerLicense") && (
+                    <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                      <label className="text-sm text-muted-foreground">Status</label>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          {allStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {(view === "providerFacility" || view === "facilityProvider" || view === "facilityPrelive") && (
+                    <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                      <label className="text-sm text-muted-foreground">State</label>
+                      <Select value={facilityStateFilter} onValueChange={setFacilityStateFilter}>
+                        <SelectTrigger><SelectValue placeholder="State" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All States</SelectItem>
+                          {allFacilityStates.map((state) => <SelectItem key={state} value={state}>{state}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {(view === "providerFacility" || view === "facilityProvider") && (
+                    <>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">Facility Type</label>
+                        <Select value={facilityTypeFilter} onValueChange={setFacilityTypeFilter}>
+                          <SelectTrigger><SelectValue placeholder="Facility type" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Types</SelectItem>
+                            {allFacilityTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">Application</label>
+                        <Select value={applicationFilter} onValueChange={(value) => setApplicationFilter(value as BooleanFilter)}>
+                          <SelectTrigger><SelectValue placeholder="Application" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                            <SelectItem value="no">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+
+                  {view === "facilityPrelive" && (
+                    <>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">Temps Possible</label>
+                        <Select value={tempsPossibleFilter} onValueChange={(value) => setTempsPossibleFilter(value as BooleanFilter)}>
+                          <SelectTrigger><SelectValue placeholder="Temps possible" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                            <SelectItem value="no">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">Payor Enrollment</label>
+                        <Select value={payorEnrollmentFilter} onValueChange={(value) => setPayorEnrollmentFilter(value as BooleanFilter)}>
+                          <SelectTrigger><SelectValue placeholder="Payor enrollment" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                            <SelectItem value="no">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+
+                  {view === "providerLicense" && (
+                    <>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">Path</label>
+                        <Select value={licensePathFilter} onValueChange={setLicensePathFilter}>
+                          <SelectTrigger><SelectValue placeholder="Path" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Paths</SelectItem>
+                            {allLicensePaths.map((path) => <SelectItem key={path} value={path}>{path}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">Cycle</label>
+                        <Select value={licenseCycleFilter} onValueChange={setLicenseCycleFilter}>
+                          <SelectTrigger><SelectValue placeholder="Initial / renewal" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Cycles</SelectItem>
+                            {allLicenseCycles.map((cycle) => <SelectItem key={cycle} value={cycle}>{cycle}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                 </section>
 
                 <Separator />
@@ -421,7 +594,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[330px_1fr]">
         <div className="flex min-h-0 flex-col border-r border-border/60 p-3">
           <Input placeholder={view === "providerFacility" || view === "providerLicense" ? "Search providers" : "Search facilities"} value={leftSearch} onChange={(event) => setLeftSearch(event.target.value)} className="mb-3" />
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div className="hide-scrollbar min-h-0 flex-1 overflow-auto">
             {activeGroups.length === 0 ? <div className="rounded-md border border-border/50 p-4 text-sm text-muted-foreground">No records match the current filters.</div> : (
               <div className="space-y-1">
                 {activeGroups.map((group) => (
@@ -440,7 +613,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
 
         <div className="flex min-h-0 flex-col p-3">
           <Input placeholder="Search selected details" value={rightSearch} onChange={(event) => setRightSearch(event.target.value)} className="mb-3" />
-          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/50">
+          <div className="hide-scrollbar min-h-0 flex-1 overflow-auto rounded-md border border-border/50">
             {!selectedGroup ? <div className="p-4 text-sm text-muted-foreground">Select an item to view details.</div> : (
               <>
                 {selectedRows.length === 0 ? <div className="p-4 text-sm text-muted-foreground">No rows match that detail search.</div> : null}
