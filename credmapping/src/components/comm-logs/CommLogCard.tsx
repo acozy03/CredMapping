@@ -11,7 +11,6 @@ interface CommLogCardProps {
   status: string | null;
   createdAt: Date | string | null;
   nextFollowupAt: Date | string | null;
-  agentName: string | null;
   createdByName: string | null;
   lastUpdatedByName: string | null;
 }
@@ -40,7 +39,6 @@ export function CommLogCard({
   status, 
   createdAt,
   nextFollowupAt,
-  agentName,
   createdByName,
   lastUpdatedByName 
 }: CommLogCardProps) {
@@ -71,11 +69,6 @@ export function CommLogCard({
 
           <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
             <div className="flex items-center gap-2">
-              {agentName && (
-                <span className="rounded bg-zinc-800 px-2 py-1">
-                  {agentName}
-                </span>
-              )}
               {nextFollowupAt && (
                 <span className="rounded bg-zinc-800 px-2 py-1">
                   Follow-up: {format(new Date(nextFollowupAt), "MMM d")}

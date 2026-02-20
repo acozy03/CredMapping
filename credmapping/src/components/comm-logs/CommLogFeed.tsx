@@ -10,7 +10,6 @@ interface CommLog {
   status: string | null;
   createdAt: Date | string | null;
   nextFollowupAt: Date | string | null;
-  agentName: string | null;
   createdByName: string | null;
   lastUpdatedByName: string | null;
 }
@@ -60,7 +59,6 @@ export function CommLogFeed({ logs, isLoading = false, onNewLog }: CommLogFeedPr
           status={log.status}
           createdAt={log.createdAt}
           nextFollowupAt={log.nextFollowupAt}
-          agentName={log.agentName}
           createdByName={log.createdByName}
           lastUpdatedByName={log.lastUpdatedByName}
         />

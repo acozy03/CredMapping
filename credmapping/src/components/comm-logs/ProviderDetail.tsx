@@ -2,8 +2,19 @@
 
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
+import { SlidersHorizontal } from "lucide-react";
 import { CommLogFeed } from "./CommLogFeed";
 import { NewLogModal } from "./NewLogModal";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "~/components/ui/sheet";
 import { api } from "~/trpc/react";
 
 interface ProviderDetailProps {
@@ -25,6 +36,10 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
   const [selectedAgent, setSelectedAgent] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: authUser } = api.auth.me.useQuery();
+  const canCreateLog = authUser?.role === "admin" || authUser?.role === "superadmin";
 
   const { data: logs, isLoading: logsLoading } =
     api.commLogs.listByProvider.useQuery({ providerId });
@@ -59,7 +74,14 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
       )
       .filter(
         (log) => selectedStatus === "all" || log.status === selectedStatus
-      );
+      )
+      .filter((log) => {
+        if (!searchQuery.trim()) return true;
+        const query = searchQuery.toLowerCase();
+        return [log.subject, log.notes, log.commType, log.createdByName]
+          .filter((value): value is string => Boolean(value))
+          .some((value) => value.toLowerCase().includes(query));
+      });
 
     if (sortOrder === "newest") {
       result.sort(
@@ -76,7 +98,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
     }
 
     return result;
-  }, [logs, selectedCommType, selectedAgent, selectedStatus, sortOrder]);
+  }, [logs, searchQuery, selectedCommType, selectedAgent, selectedStatus, sortOrder]);
 
   const fullName = [provider.firstName, provider.lastName]
     .filter(Boolean)
@@ -162,80 +184,110 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === "logs" && (
           <div>
-            <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">
-                Communication History
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="px-4 py-2 bg-primary text-primary-foreground font-medium rounded hover:bg-primary/90 transition-colors"
-              >
-                + New Log Entry
-              </button>
-            </div>
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="h-9 min-w-[240px] flex-1"
+                placeholder="Search communication logs"
+              />
 
-            {/* Filter Bar */}
-            <div className="mb-4 flex items-center gap-2 px-4 py-3 border border-zinc-800 bg-zinc-900/50 rounded-lg">
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-zinc-500 mr-1">Type:</label>
-                <select
-                  value={selectedCommType}
-                  onChange={(e) => setSelectedCommType(e.target.value)}
-                  className="bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2.5 py-1.5 text-xs font-medium cursor-pointer focus:outline-none focus:border-ring"
-                >
-                  <option value="all">All Types</option>
-                  <option value="Email">Email</option>
-                  <option value="Phone Call">Phone Call</option>
-                  <option value="Dropbox">Dropbox</option>
-                  <option value="Document">Document</option>
-                  <option value="Modio">Modio</option>
-                </select>
-              </div>
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="outline" className="h-9">
+                    <SlidersHorizontal className="size-4" />
+                    Filters
+                  </Button>
+                </SheetTrigger>
+                <SheetContent>
+                  <SheetHeader>
+                    <SheetTitle>Comm log filters</SheetTitle>
+                    <SheetDescription>
+                      Filter and sort communication logs.
+                    </SheetDescription>
+                  </SheetHeader>
 
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-zinc-500 mr-1">Agent:</label>
-                <select
-                  value={selectedAgent}
-                  onChange={(e) => setSelectedAgent(e.target.value)}
-                  className="bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2.5 py-1.5 text-xs font-medium cursor-pointer focus:outline-none focus:border-ring"
-                >
-                  <option value="all">All Agents</option>
-                  {uniqueAgents.map((agent) => (
-                    <option key={agent} value={agent}>
-                      {agent}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <div className="space-y-4 px-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-zinc-500">Type</label>
+                      <select
+                        value={selectedCommType}
+                        onChange={(e) => setSelectedCommType(e.target.value)}
+                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-zinc-300"
+                      >
+                        <option value="all">All Types</option>
+                        <option value="Email">Email</option>
+                        <option value="Phone Call">Phone Call</option>
+                        <option value="Dropbox">Dropbox</option>
+                        <option value="Document">Document</option>
+                        <option value="Modio">Modio</option>
+                      </select>
+                    </div>
 
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-zinc-500 mr-1">Status:</label>
-                <select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2.5 py-1.5 text-xs font-medium cursor-pointer focus:outline-none focus:border-ring"
-                >
-                  <option value="all">All Status</option>
-                  <option value="pending_response">Pending Response</option>
-                  <option value="fu_completed">F/U Completed</option>
-                  <option value="received">Received</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-zinc-500">Agent</label>
+                      <select
+                        value={selectedAgent}
+                        onChange={(e) => setSelectedAgent(e.target.value)}
+                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-zinc-300"
+                      >
+                        <option value="all">All Agents</option>
+                        {uniqueAgents.map((agent) => (
+                          <option key={agent} value={agent}>
+                            {agent}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-zinc-500 mr-1">Sort:</label>
-                <select
-                  value={sortOrder}
-                  onChange={(e) =>
-                    setSortOrder(e.target.value as "newest" | "oldest")
-                  }
-                  className="bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2.5 py-1.5 text-xs font-medium cursor-pointer focus:outline-none focus:border-ring"
-                >
-                  <option value="newest">Newest First</option>
-                  <option value="oldest">Oldest First</option>
-                </select>
-              </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-zinc-500">Status</label>
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-zinc-300"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="pending_response">Pending Response</option>
+                        <option value="fu_completed">F/U Completed</option>
+                        <option value="received">Received</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs text-zinc-500">Sort</label>
+                      <select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
+                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-zinc-300"
+                      >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                      </select>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        setSelectedCommType("all");
+                        setSelectedAgent("all");
+                        setSelectedStatus("all");
+                        setSortOrder("newest");
+                      }}
+                    >
+                      Reset filters
+                    </Button>
+                  </div>
+                </SheetContent>
+              </Sheet>
+
+              {canCreateLog && (
+                <Button className="h-9" onClick={() => setIsModalOpen(true)}>
+                  + Add Comm Log
+                </Button>
+              )}
             </div>
 
             <CommLogFeed
@@ -248,7 +300,6 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
                   status: log.status,
                   createdAt: log.createdAt,
                   nextFollowupAt: log.nextFollowupAt,
-                  agentName: log.agentName,
                   createdByName: log.createdByName,
                   lastUpdatedByName: log.lastUpdatedByName,
                 })) || []

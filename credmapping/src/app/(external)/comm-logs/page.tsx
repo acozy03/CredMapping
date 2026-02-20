@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LeftPanel } from "~/components/comm-logs/LeftPanel";
 import { ProviderDetail } from "~/components/comm-logs/ProviderDetail";
 import { FacilityDetail } from "~/components/comm-logs/FacilityDetail";
@@ -53,8 +53,56 @@ export default function CommLogsPage() {
       { enabled: mode === "facility" }
     );
 
-  const items = (mode === "provider" ? providers : facilities) ?? [];
+  const items = useMemo(
+    () => (mode === "provider" ? providers : facilities) ?? [],
+    [facilities, mode, providers],
+  );
   const isLoading = mode === "provider" ? providersLoading : facilitiesLoading;
+
+  const mappedItems = useMemo(
+    () =>
+      items.map((item) => {
+        if (mode === "provider") {
+          const provider = item as ProviderWithStatus;
+          return {
+            id: provider.id,
+            name: `${provider.lastName ?? ""}, ${provider.firstName ?? ""}`,
+            subText: provider.email ?? undefined,
+            nextFollowupAt: provider.nextFollowupAt,
+            status: provider.latestStatus,
+          };
+        }
+
+        const facility = item as FacilityWithStatus;
+        return {
+          id: facility.id,
+          name: facility.name ?? "",
+          subText: facility.state ?? undefined,
+          nextFollowupAt: facility.nextFollowupAt,
+          status: facility.latestStatus,
+        };
+      }),
+    [items, mode],
+  );
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (mappedItems.length === 0) {
+      if (selectedId) {
+        setSelectedId(undefined);
+      }
+      return;
+    }
+
+    const selectedStillExists = selectedId
+      ? mappedItems.some((item) => item.id === selectedId)
+      : false;
+
+    if (!selectedStillExists) {
+      setSelectedId(mappedItems[0]?.id);
+    }
+  }, [isLoading, mappedItems, selectedId]);
 
   const handleModeChange = (newMode: "provider" | "facility") => {
     setMode(newMode);
@@ -78,27 +126,7 @@ export default function CommLogsPage() {
       <LeftPanel
         mode={mode}
         onModeChange={handleModeChange}
-        items={items.map((item) => {
-          if (mode === "provider") {
-            const provider = item as ProviderWithStatus;
-            return {
-              id: provider.id,
-              name: `${provider.lastName ?? ""}, ${provider.firstName ?? ""}`,
-              subText: provider.email ?? undefined,
-              nextFollowupAt: provider.nextFollowupAt,
-              status: provider.latestStatus,
-            };
-          } else {
-            const facility = item as FacilityWithStatus;
-            return {
-              id: facility.id,
-              name: facility.name ?? "",
-              subText: facility.state ?? undefined,
-              nextFollowupAt: facility.nextFollowupAt,
-              status: facility.latestStatus,
-            };
-          }
-        })}
+        items={mappedItems}
         selectedItemId={selectedId}
         onSelectItem={setSelectedId}
         isLoading={isLoading}
