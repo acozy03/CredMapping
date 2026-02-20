@@ -30,6 +30,7 @@ interface ProviderDetailProps {
 }
 
 export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
+  const utils = api.useUtils();
   const [activeTab, setActiveTab] = useState<"logs" | "psv" | "notes">("logs");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<{
@@ -112,19 +113,26 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
     .filter(Boolean)
     .join(" ");
 
-  const displayName = provider.degree ? `${fullName}, ${provider.degree}` : fullName;
-
-  const handleLogCreated = () => {
-    // Refetch logs
-    window.location.reload();
+  const handleLogCreated = async () => {
+    await Promise.all([
+      utils.commLogs.listByProvider.invalidate({ providerId }),
+      utils.commLogs.getProviderSummary.invalidate({ providerId }),
+      utils.commLogs.getPendingPSVsByProvider.invalidate({ providerId }),
+      utils.providersWithCommLogs.listWithCommLogStatus.invalidate(),
+    ]);
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Header Card */}
       <div className="border-b border-border bg-card p-6">
         <div className="mb-4">
-          <h2 className="text-2xl font-bold text-white mb-2">{displayName}</h2>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-white">{fullName}</h2>
+            <span className="rounded border border-border bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+              {provider.degree ?? "—"}
+            </span>
+          </div>
           {provider.email && (
             <p className="text-sm text-zinc-400">{provider.email}</p>
           )}
@@ -189,7 +197,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {activeTab === "logs" && (
           <div>
             <div className="mb-4 flex flex-wrap items-center gap-2">

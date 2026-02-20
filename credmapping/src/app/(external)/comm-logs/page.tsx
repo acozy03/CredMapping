@@ -11,6 +11,7 @@ type ProviderWithStatus = {
   id: string;
   firstName: string | null;
   lastName: string | null;
+  degree: string | null;
   email: string | null;
   nextFollowupAt: Date | null;
   latestStatus: string | null;
@@ -20,6 +21,7 @@ type FacilityWithStatus = {
   id: string;
   name: string | null;
   state: string | null;
+  status: string | null;
   nextFollowupAt: Date | null;
   latestStatus: string | null;
 };
@@ -68,6 +70,7 @@ export default function CommLogsPage() {
             id: provider.id,
             name: `${provider.lastName ?? ""}, ${provider.firstName ?? ""}`,
             subText: provider.email ?? undefined,
+            rightMeta: provider.degree ?? undefined,
             nextFollowupAt: provider.nextFollowupAt,
             status: provider.latestStatus,
           };
@@ -77,7 +80,7 @@ export default function CommLogsPage() {
         return {
           id: facility.id,
           name: facility.name ?? "",
-          subText: facility.state ?? undefined,
+          rightMeta: facility.state ?? undefined,
           nextFollowupAt: facility.nextFollowupAt,
           status: facility.latestStatus,
         };
@@ -137,7 +140,7 @@ export default function CommLogsPage() {
       />
 
       {/* Right Panel - Content */}
-      <div className="relative flex-1 min-h-0 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {!selectedId ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">

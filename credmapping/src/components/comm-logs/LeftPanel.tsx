@@ -7,6 +7,7 @@ interface ListItem {
   id: string;
   name: string;
   subText?: string;
+  rightMeta?: string;
   badge?: string;
   nextFollowupAt: Date | string | null;
   status?: string | null;
@@ -136,10 +137,22 @@ export function LeftPanel({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium text-white truncate">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <h4 className="min-w-0 flex-1 truncate font-medium text-white">
                         {item.name}
                       </h4>
+                      <span className="max-w-[40%] truncate text-xs font-medium text-zinc-400">
+                        {item.rightMeta}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      {item.subText ? (
+                        <p className="text-xs text-zinc-400 truncate">
+                          {item.subText}
+                        </p>
+                      ) : (
+                        <span aria-hidden="true" />
+                      )}
                       {item.status && (
                         <span
                           className={`text-xs font-medium px-2 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${
@@ -156,11 +169,6 @@ export function LeftPanel({
                         </span>
                       )}
                     </div>
-                    {item.subText && (
-                      <p className="text-xs text-zinc-400 truncate">
-                        {item.subText}
-                      </p>
-                    )}
                   </div>
                   <div className="flex-shrink-0 empty:hidden">
                     <FollowUpBadge

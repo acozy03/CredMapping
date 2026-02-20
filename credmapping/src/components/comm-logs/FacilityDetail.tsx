@@ -43,6 +43,7 @@ export function FacilityDetail({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   facilityContacts = [],
 }: FacilityDetailProps) {
+  const utils = api.useUtils();
   const [activeTab, setActiveTab] = useState<
     "logs" | "cred-docs" | "non-cred-docs" | "contacts"
   >("logs");
@@ -129,21 +130,28 @@ export function FacilityDetail({
   const isCred = facility.status === "Active";
   const credLabel = isCred ? "CRED" : "NON-CRED";
 
-  const handleLogCreated = () => {
-    // Refetch logs
-    window.location.reload();
+  const handleLogCreated = async () => {
+    await Promise.all([
+      utils.commLogs.listByFacility.invalidate({ facilityId }),
+      utils.commLogs.getFacilitySummary.invalidate({ facilityId }),
+      utils.commLogs.getMissingDocsByFacility.invalidate({ facilityId }),
+      utils.commLogs.getContactsByFacility.invalidate({ facilityId }),
+      utils.facilitiesWithCommLogs.listWithCommLogStatus.invalidate(),
+    ]);
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Header Card */}
       <div className="border-b border-border bg-card p-6">
         <div className="mb-4">
-          <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-2xl font-bold text-white">{facility.name}</h2>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-white">{facility.name}</h2>
             <span className="rounded border border-border bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
-              {facility.state}
+              {facility.state ?? "—"}
             </span>
+          </div>
+          <div className="flex items-center gap-3">
             <span
               className={`px-2 py-1 text-xs font-medium rounded ${
                 isCred
@@ -233,7 +241,7 @@ export function FacilityDetail({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {activeTab === "logs" && (
           <div>
             <div className="mb-4 flex flex-wrap items-center gap-2">

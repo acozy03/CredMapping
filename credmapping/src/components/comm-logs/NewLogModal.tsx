@@ -28,7 +28,7 @@ interface NewLogModalProps {
   relatedId: string;
   relatedType: "provider" | "facility";
   editingLog?: EditableLog | null;
-  onLogCreated?: () => void;
+  onLogCreated?: () => void | Promise<void>;
 }
 
 const defaultFormData = {
@@ -99,7 +99,7 @@ export function NewLogModal({
       }
 
       setFormData(defaultFormData);
-      onLogCreated?.();
+      await onLogCreated?.();
       onClose();
     } catch (error) {
       console.error("Failed to save log:", error);
