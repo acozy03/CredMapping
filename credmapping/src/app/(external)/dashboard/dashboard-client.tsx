@@ -1,19 +1,31 @@
 "use client";
 
+import { ArrowDown, ArrowUp, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { Separator } from "~/components/ui/separator";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "~/components/ui/sheet";
 import { cn } from "~/lib/utils";
 
 type ViewKey = "providerFacility" | "facilityProvider" | "facilityPrelive" | "providerLicense";
+type SortDirection = "asc" | "desc";
+type GroupSortField = "name" | "updated";
+type DetailSortField =
+  | "facility"
+  | "provider"
+  | "priority"
+  | "privileges"
+  | "status"
+  | "type"
+  | "application"
+  | "state"
+  | "path"
+  | "initialOrRenewal"
+  | "requested"
+  | "finalDate";
 
 type ProviderFacilityRow = {
   id: string;
@@ -81,6 +93,7 @@ const viewButtons: Array<{ key: ViewKey; label: string }> = [
   { key: "providerLicense", label: "Provider-Level State License Overview" },
 ];
 
+const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
 const formatDate = (value: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
@@ -88,38 +101,25 @@ const formatDate = (value: string | null) => {
   return date.toLocaleDateString();
 };
 
-const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
-
 const statusTone = (value: string | null) => {
   const normalized = normalize(value);
-  if (normalized.includes("approved")) return "bg-emerald-500/15 text-emerald-200 border-emerald-500/50";
-  if (normalized.includes("awaiting") || normalized.includes("pending")) {
-    return "bg-blue-500/15 text-blue-200 border-blue-500/50";
-  }
-  if (normalized.includes("missing") || normalized.includes("hold") || normalized.includes("ineligible")) {
-    return "bg-violet-500/15 text-violet-200 border-violet-500/50";
-  }
-  return "bg-muted text-foreground border-border";
+  if (normalized.includes("approved")) return "border-emerald-600/50 bg-emerald-50 text-emerald-800 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200";
+  if (normalized.includes("awaiting") || normalized.includes("pending")) return "border-blue-600/50 bg-blue-50 text-blue-800 dark:border-blue-500/50 dark:bg-blue-500/15 dark:text-blue-200";
+  if (normalized.includes("missing") || normalized.includes("hold") || normalized.includes("ineligible")) return "border-violet-600/50 bg-violet-50 text-violet-800 dark:border-violet-500/50 dark:bg-violet-500/15 dark:text-violet-200";
+  return "border-border bg-muted text-foreground";
 };
 
 const priorityTone = (value: string | null) => {
   const normalized = normalize(value);
-  if (normalized.includes("top")) return "bg-red-500/15 text-red-200 border-red-500/50";
-  if (normalized.includes("super stat") || normalized.includes("stat")) {
-    return "bg-blue-500/15 text-blue-200 border-blue-500/50";
-  }
-  if (normalized.includes("high")) return "bg-orange-500/15 text-orange-200 border-orange-500/50";
-  if (normalized.includes("medium")) return "bg-amber-500/15 text-amber-100 border-amber-500/50";
-  if (normalized.includes("low")) return "bg-yellow-500/15 text-yellow-100 border-yellow-500/50";
-  return "bg-muted text-foreground border-border";
+  if (normalized.includes("top")) return "border-rose-600/50 bg-rose-50 text-rose-800 dark:border-rose-500/50 dark:bg-rose-500/15 dark:text-rose-200";
+  if (normalized.includes("super stat") || normalized.includes("stat")) return "border-blue-600/50 bg-blue-50 text-blue-800 dark:border-blue-500/50 dark:bg-blue-500/15 dark:text-blue-200";
+  if (normalized.includes("high")) return "border-orange-600/50 bg-orange-50 text-orange-800 dark:border-orange-500/50 dark:bg-orange-500/15 dark:text-orange-200";
+  if (normalized.includes("medium")) return "border-amber-700/50 bg-amber-50 text-amber-900 dark:border-amber-500/50 dark:bg-amber-500/15 dark:text-amber-100";
+  if (normalized.includes("low")) return "border-yellow-700/50 bg-yellow-50 text-yellow-900 dark:border-yellow-500/50 dark:bg-yellow-500/15 dark:text-yellow-100";
+  return "border-border bg-muted text-foreground";
 };
 
-function groupBy<T>(
-  rows: T[],
-  keyFn: (row: T) => string,
-  labelFn: (row: T) => string,
-  subtitleFn?: (row: T) => string | undefined,
-): GroupedRows<T>[] {
+function groupBy<T>(rows: T[], keyFn: (row: T) => string, labelFn: (row: T) => string, subtitleFn?: (row: T) => string | undefined): GroupedRows<T>[] {
   const map = new Map<string, GroupedRows<T>>();
   for (const row of rows) {
     const key = keyFn(row);
@@ -133,168 +133,123 @@ function groupBy<T>(
   return Array.from(map.values());
 }
 
-function rowsMatchSearch(rows: ProviderFacilityRow[] | FacilityPreliveRow[] | ProviderLicenseRow[], query: string) {
-  const q = normalize(query);
-  if (!q) return rows;
-
-  return rows.filter((row) => {
-    if ("providerName" in row && "facilityName" in row) {
-      return [
-        row.providerName,
-        row.facilityName,
-        row.facilityState ?? "",
-        row.priority ?? "",
-        row.privileges ?? "",
-        row.decision ?? "",
-        row.facilityType ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    }
-
-    if ("facilityName" in row && "rolesNeeded" in row) {
-      return [row.facilityName, row.facilityState ?? "", row.priority ?? "", row.rolesNeeded.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    }
-
-    return [
-      row.providerName,
-      row.state ?? "",
-      row.priority ?? "",
-      row.path ?? "",
-      row.status ?? "",
-      row.initialOrRenewal ?? "",
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(q);
+function sortByDirection<T>(rows: T[], direction: SortDirection, getter: (row: T) => string | number) {
+  return [...rows].sort((a, b) => {
+    const aVal = getter(a);
+    const bVal = getter(b);
+    const base = typeof aVal === "number" && typeof bVal === "number" ? aVal - bVal : String(aVal).localeCompare(String(bVal));
+    return direction === "asc" ? base : -base;
   });
 }
 
-export function DashboardClient({
-  providerFacilityRows,
-  facilityPreliveRows,
-  providerLicenseRows,
-}: DashboardClientProps) {
+function rowsMatchSearch(rows: ProviderFacilityRow[] | FacilityPreliveRow[] | ProviderLicenseRow[], query: string) {
+  const q = normalize(query);
+  if (!q) return rows;
+  return rows.filter((row) => {
+    if ("providerName" in row && "facilityName" in row) {
+      return [row.providerName, row.facilityName, row.facilityState ?? "", row.priority ?? "", row.privileges ?? "", row.decision ?? "", row.facilityType ?? ""].join(" ").toLowerCase().includes(q);
+    }
+    if ("facilityName" in row && "rolesNeeded" in row) {
+      return [row.facilityName, row.facilityState ?? "", row.priority ?? "", row.rolesNeeded.join(" ")].join(" ").toLowerCase().includes(q);
+    }
+    return [row.providerName, row.state ?? "", row.priority ?? "", row.path ?? "", row.status ?? "", row.initialOrRenewal ?? ""].join(" ").toLowerCase().includes(q);
+  });
+}
+
+function SortableHeader({ label, field, activeField, direction, onSort }: { label: string; field: DetailSortField; activeField: DetailSortField | null; direction: SortDirection; onSort: (field: DetailSortField) => void }) {
+  const isActive = field === activeField;
+  return (
+    <th className="p-2 text-left font-medium">
+      <button type="button" onClick={() => onSort(field)} className="inline-flex items-center gap-1 text-left hover:text-foreground">
+        {label}
+        {isActive ? direction === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" /> : null}
+      </button>
+    </th>
+  );
+}
+
+export function DashboardClient({ providerFacilityRows, facilityPreliveRows, providerLicenseRows }: DashboardClientProps) {
   const [view, setView] = useState<ViewKey>("providerFacility");
   const [leftSearch, setLeftSearch] = useState("");
   const [rightSearch, setRightSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sort, setSort] = useState("updated_desc");
+  const [groupSortField, setGroupSortField] = useState<GroupSortField>("updated");
+  const [groupSortDirection, setGroupSortDirection] = useState<SortDirection>("desc");
+  const [detailSortField, setDetailSortField] = useState<DetailSortField | null>(null);
+  const [detailSortDirection, setDetailSortDirection] = useState<SortDirection>("asc");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const allPriorities = useMemo(() => {
-    const values = new Set<string>();
-    for (const row of providerFacilityRows) if (row.priority) values.add(row.priority);
-    for (const row of facilityPreliveRows) if (row.priority) values.add(row.priority);
-    for (const row of providerLicenseRows) if (row.priority) values.add(row.priority);
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [facilityPreliveRows, providerFacilityRows, providerLicenseRows]);
+  const allPriorities = useMemo(() => Array.from(new Set([...providerFacilityRows.map((r) => r.priority), ...facilityPreliveRows.map((r) => r.priority), ...providerLicenseRows.map((r) => r.priority)].filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [facilityPreliveRows, providerFacilityRows, providerLicenseRows]);
+  const allStatuses = useMemo(() => Array.from(new Set([...providerFacilityRows.map((r) => r.decision), ...providerLicenseRows.map((r) => r.status)].filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerFacilityRows, providerLicenseRows]);
 
-  const allStatuses = useMemo(() => {
-    const values = new Set<string>();
-    for (const row of providerFacilityRows) if (row.decision) values.add(row.decision);
-    for (const row of providerLicenseRows) if (row.status) values.add(row.status);
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [providerFacilityRows, providerLicenseRows]);
+  const filteredProviderFacility = useMemo(() => providerFacilityRows.filter((row) => (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter)) && (statusFilter === "all" || normalize(row.decision) === normalize(statusFilter))), [priorityFilter, providerFacilityRows, statusFilter]);
+  const filteredPrelive = useMemo(() => facilityPreliveRows.filter((row) => priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter)), [facilityPreliveRows, priorityFilter]);
+  const filteredLicenses = useMemo(() => providerLicenseRows.filter((row) => (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter)) && (statusFilter === "all" || normalize(row.status) === normalize(statusFilter))), [priorityFilter, providerLicenseRows, statusFilter]);
 
-  const filteredProviderFacility = useMemo(() => {
-    const rows = providerFacilityRows.filter((row) => {
-      const matchesPriority =
-        priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter);
-      const matchesStatus =
-        statusFilter === "all" || normalize(row.decision) === normalize(statusFilter);
-      return matchesPriority && matchesStatus;
-    });
-
-    return [...rows].sort((a, b) => {
-      if (sort === "name_asc") return a.providerName.localeCompare(b.providerName);
-      if (sort === "name_desc") return b.providerName.localeCompare(a.providerName);
-      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return sort === "updated_asc" ? aTime - bTime : bTime - aTime;
-    });
-  }, [priorityFilter, providerFacilityRows, sort, statusFilter]);
-
-  const filteredPrelive = useMemo(() => {
-    const rows = facilityPreliveRows.filter((row) =>
-      priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter),
+  const providerGroups = useMemo(() => {
+    const grouped = groupBy(
+      filteredProviderFacility,
+      (row) => row.providerId ?? row.providerName,
+      (row) => row.providerName,
+      (row) => row.providerDegree ?? undefined,
     );
-
-    return [...rows].sort((a, b) => {
-      if (sort === "name_asc") return a.facilityName.localeCompare(b.facilityName);
-      if (sort === "name_desc") return b.facilityName.localeCompare(a.facilityName);
-      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return sort === "updated_asc" ? aTime - bTime : bTime - aTime;
+    if (groupSortField === "name") {
+      return sortByDirection(grouped, groupSortDirection, (row) => row.label.toLowerCase());
+    }
+    return sortByDirection(grouped, groupSortDirection, (row) => {
+      const first = row.rows[0] as { updatedAt?: string | null } | undefined;
+      return first?.updatedAt ? new Date(first.updatedAt).getTime() : 0;
     });
-  }, [facilityPreliveRows, priorityFilter, sort]);
+  }, [filteredProviderFacility, groupSortDirection, groupSortField]);
 
-  const filteredLicenses = useMemo(() => {
-    const rows = providerLicenseRows.filter((row) => {
-      const matchesPriority =
-        priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter);
-      const matchesStatus =
-        statusFilter === "all" || normalize(row.status) === normalize(statusFilter);
-      return matchesPriority && matchesStatus;
+  const facilityGroups = useMemo(() => {
+    const grouped = groupBy(
+      filteredProviderFacility,
+      (row) => row.facilityId ?? row.facilityName,
+      (row) => row.facilityName,
+      (row) => row.facilityState ?? undefined,
+    );
+    if (groupSortField === "name") {
+      return sortByDirection(grouped, groupSortDirection, (row) => row.label.toLowerCase());
+    }
+    return sortByDirection(grouped, groupSortDirection, (row) => {
+      const first = row.rows[0] as { updatedAt?: string | null } | undefined;
+      return first?.updatedAt ? new Date(first.updatedAt).getTime() : 0;
     });
+  }, [filteredProviderFacility, groupSortDirection, groupSortField]);
 
-    return [...rows].sort((a, b) => {
-      if (sort === "name_asc") return a.providerName.localeCompare(b.providerName);
-      if (sort === "name_desc") return b.providerName.localeCompare(a.providerName);
-      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return sort === "updated_asc" ? aTime - bTime : bTime - aTime;
+  const preliveGroups = useMemo(() => {
+    const grouped = groupBy(
+      filteredPrelive,
+      (row) => row.facilityId ?? row.facilityName,
+      (row) => row.facilityName,
+      (row) => row.facilityState ?? undefined,
+    );
+    if (groupSortField === "name") {
+      return sortByDirection(grouped, groupSortDirection, (row) => row.label.toLowerCase());
+    }
+    return sortByDirection(grouped, groupSortDirection, (row) => {
+      const first = row.rows[0] as { updatedAt?: string | null } | undefined;
+      return first?.updatedAt ? new Date(first.updatedAt).getTime() : 0;
     });
-  }, [priorityFilter, providerLicenseRows, sort, statusFilter]);
+  }, [filteredPrelive, groupSortDirection, groupSortField]);
 
-  const providerGroups = useMemo(
-    () =>
-      groupBy(
-        filteredProviderFacility,
-        (row) => row.providerId ?? row.providerName,
-        (row) => row.providerName,
-        (row) => row.providerDegree ?? undefined,
-      ),
-    [filteredProviderFacility],
-  );
-
-  const facilityGroups = useMemo(
-    () =>
-      groupBy(
-        filteredProviderFacility,
-        (row) => row.facilityId ?? row.facilityName,
-        (row) => row.facilityName,
-        (row) => row.facilityState ?? undefined,
-      ),
-    [filteredProviderFacility],
-  );
-
-  const preliveGroups = useMemo(
-    () =>
-      groupBy(
-        filteredPrelive,
-        (row) => row.facilityId ?? row.facilityName,
-        (row) => row.facilityName,
-        (row) => row.facilityState ?? undefined,
-      ),
-    [filteredPrelive],
-  );
-
-  const licenseGroups = useMemo(
-    () =>
-      groupBy(
-        filteredLicenses,
-        (row) => row.providerId ?? row.providerName,
-        (row) => row.providerName,
-        (row) => row.providerDegree ?? undefined,
-      ),
-    [filteredLicenses],
-  );
+  const licenseGroups = useMemo(() => {
+    const grouped = groupBy(
+      filteredLicenses,
+      (row) => row.providerId ?? row.providerName,
+      (row) => row.providerName,
+      (row) => row.providerDegree ?? undefined,
+    );
+    if (groupSortField === "name") {
+      return sortByDirection(grouped, groupSortDirection, (row) => row.label.toLowerCase());
+    }
+    return sortByDirection(grouped, groupSortDirection, (row) => {
+      const first = row.rows[0] as { updatedAt?: string | null } | undefined;
+      return first?.updatedAt ? new Date(first.updatedAt).getTime() : 0;
+    });
+  }, [filteredLicenses, groupSortDirection, groupSortField]);
 
   const groupsForView = useMemo(() => {
     if (view === "providerFacility") return providerGroups;
@@ -306,134 +261,176 @@ export function DashboardClient({
   const activeGroups = useMemo(() => {
     const q = normalize(leftSearch);
     if (!q) return groupsForView;
-    return groupsForView.filter((group) =>
-      `${group.label} ${group.subtitle ?? ""}`.toLowerCase().includes(q),
-    );
+    return groupsForView.filter((group) => `${group.label} ${group.subtitle ?? ""}`.toLowerCase().includes(q));
   }, [groupsForView, leftSearch]);
 
   useEffect(() => {
-    if (activeGroups.length === 0) {
-      setSelectedKey(null);
-      return;
-    }
-
-    if (!selectedKey || !activeGroups.some((group) => group.key === selectedKey)) {
-      setSelectedKey(activeGroups[0]?.key ?? null);
-    }
+    if (activeGroups.length === 0) return setSelectedKey(null);
+    if (!selectedKey || !activeGroups.some((group) => group.key === selectedKey)) setSelectedKey(activeGroups[0]?.key ?? null);
   }, [activeGroups, selectedKey]);
 
-  const selectedGroup = useMemo(
-    () => activeGroups.find((group) => group.key === selectedKey) ?? null,
-    [activeGroups, selectedKey],
-  );
+  const selectedGroup = useMemo(() => activeGroups.find((group) => group.key === selectedKey) ?? null, [activeGroups, selectedKey]);
 
   const selectedRows = useMemo(() => {
     if (!selectedGroup) return [];
-    return rowsMatchSearch(
-      selectedGroup.rows,
-      rightSearch,
-    );
-  }, [rightSearch, selectedGroup]);
+    const rows = rowsMatchSearch(selectedGroup.rows, rightSearch);
+    if (!detailSortField) return rows;
+    if (view === "providerFacility" || view === "facilityProvider") {
+      return sortByDirection(rows as ProviderFacilityRow[], detailSortDirection, (row) => {
+        if (detailSortField === "facility") return row.facilityName;
+        if (detailSortField === "provider") return row.providerName;
+        if (detailSortField === "priority") return row.priority ?? "";
+        if (detailSortField === "privileges") return row.privileges ?? "";
+        if (detailSortField === "status") return row.decision ?? "";
+        if (detailSortField === "type") return row.facilityType ?? "";
+        if (detailSortField === "application") return row.applicationRequired === null ? -1 : Number(row.applicationRequired);
+        return 0;
+      });
+    }
+    if (view === "providerLicense") {
+      return sortByDirection(rows as ProviderLicenseRow[], detailSortDirection, (row) => {
+        if (detailSortField === "state") return row.state ?? "";
+        if (detailSortField === "priority") return row.priority ?? "";
+        if (detailSortField === "path") return row.path ?? "";
+        if (detailSortField === "status") return row.status ?? "";
+        if (detailSortField === "initialOrRenewal") return row.initialOrRenewal ?? "";
+        if (detailSortField === "requested") return row.startsAt ? new Date(row.startsAt).getTime() : 0;
+        if (detailSortField === "finalDate") return row.expiresAt ? new Date(row.expiresAt).getTime() : 0;
+        return 0;
+      });
+    }
+    return rows;
+  }, [detailSortDirection, detailSortField, rightSearch, selectedGroup, view]);
+
+  const onHeaderSort = (field: DetailSortField) => {
+    if (detailSortField === field) {
+      setDetailSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setDetailSortField(field);
+    setDetailSortDirection("asc");
+  };
+
+  const resetFilters = () => {
+    setPriorityFilter("all");
+    setStatusFilter("all");
+    setGroupSortField("updated");
+    setGroupSortDirection("desc");
+    setDetailSortField(null);
+    setDetailSortDirection("asc");
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border/70">
       <div className="border-b border-border/70 p-3">
-        <div className="flex flex-wrap gap-2">
-          {viewButtons.map((button) => (
-            <Button
-              key={button.key}
-              size="sm"
-              variant={view === button.key ? "default" : "outline"}
-              onClick={() => {
-                setView(button.key);
-                setSelectedKey(null);
-                setLeftSearch("");
-                setRightSearch("");
-              }}
-            >
-              {button.label}
-            </Button>
-          ))}
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-3">
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              {allPriorities.map((priority) => (
-                <SelectItem key={priority} value={priority}>
-                  {priority}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              {allStatuses.map((status) => (
-                <SelectItem key={status} value={status}>
-                  {status}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger>
-              <SelectValue placeholder="Sort" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="updated_desc">Date: Newest First</SelectItem>
-              <SelectItem value="updated_asc">Date: Oldest First</SelectItem>
-              <SelectItem value="name_asc">Name: A to Z</SelectItem>
-              <SelectItem value="name_desc">Name: Z to A</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            {viewButtons.map((button) => (
+              <Button
+                key={button.key}
+                size="sm"
+                variant={view === button.key ? "default" : "outline"}
+                className={cn(view !== button.key && "border-border")}
+                onClick={() => {
+                  setView(button.key);
+                  setSelectedKey(null);
+                  setLeftSearch("");
+                  setRightSearch("");
+                  setDetailSortField(null);
+                }}
+              >
+                {button.label}
+              </Button>
+            ))}
+          </div>
+
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button size="sm" variant="outline">
+                <SlidersHorizontal className="size-4" />
+                Filters
+              </Button>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>Dashboard filters</SheetTitle>
+                <SheetDescription>Filter and sort all views from one panel.</SheetDescription>
+              </SheetHeader>
+
+              <div className="flex flex-1 flex-col gap-4 overflow-auto px-4 pb-4">
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Filtering</h3>
+                  <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">Priority</label>
+                    <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                      <SelectTrigger><SelectValue placeholder="Priority" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Priorities</SelectItem>
+                        {allPriorities.map((priority) => <SelectItem key={priority} value={priority}>{priority}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">Status</label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        {allStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Sorting</h3>
+                  <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">Sort by</label>
+                    <Select value={groupSortField} onValueChange={(value) => setGroupSortField(value as GroupSortField)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="updated">Updated date</SelectItem>
+                        <SelectItem value="name">Name</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                    <label className="text-sm text-muted-foreground">Direction</label>
+                    <Select value={groupSortDirection} onValueChange={(value) => setGroupSortDirection(value as SortDirection)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="asc">Ascending</SelectItem>
+                        <SelectItem value="desc">Descending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </section>
+              </div>
+
+              <div className="mt-auto px-4 pb-4">
+                <Separator className="mb-4" />
+                <Button variant="outline" className="w-full" onClick={resetFilters}>Reset filters</Button>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[330px_1fr]">
         <div className="flex min-h-0 flex-col border-r border-border/60 p-3">
-          <Input
-            placeholder={
-              view === "providerFacility" || view === "providerLicense"
-                ? "Search providers"
-                : "Search facilities"
-            }
-            value={leftSearch}
-            onChange={(event) => setLeftSearch(event.target.value)}
-            className="mb-3"
-          />
+          <Input placeholder={view === "providerFacility" || view === "providerLicense" ? "Search providers" : "Search facilities"} value={leftSearch} onChange={(event) => setLeftSearch(event.target.value)} className="mb-3" />
           <div className="min-h-0 flex-1 overflow-auto">
-            {activeGroups.length === 0 ? (
-              <div className="rounded-md border border-border/50 p-4 text-sm text-muted-foreground">
-                No records match the current filters.
-              </div>
-            ) : (
+            {activeGroups.length === 0 ? <div className="rounded-md border border-border/50 p-4 text-sm text-muted-foreground">No records match the current filters.</div> : (
               <div className="space-y-1">
                 {activeGroups.map((group) => (
-                  <button
-                    key={group.key}
-                    type="button"
-                    onClick={() => setSelectedKey(group.key)}
-                    className={cn(
-                      "w-full rounded-md border px-3 py-2 text-left transition",
-                      selectedGroup?.key === group.key
-                        ? "border-primary/60 bg-primary/10"
-                        : "border-border/50 hover:bg-muted/40",
-                    )}
-                  >
+                  <button key={group.key} type="button" onClick={() => setSelectedKey(group.key)} className={cn("w-full rounded-md border px-3 py-2 text-left transition", selectedGroup?.key === group.key ? "border-primary/60 bg-primary/10" : "border-border/50 hover:bg-muted/40")}>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="truncate text-sm font-medium">{group.label}</div>
+                      <div className="truncate font-medium">{group.label}</div>
                       <div className="text-xs text-muted-foreground">{group.rows.length}</div>
                     </div>
-                    {group.subtitle && (
-                      <div className="mt-1 text-xs text-muted-foreground">{group.subtitle}</div>
-                    )}
+                    {group.subtitle ? <div className="mt-0.5 text-xs text-muted-foreground">{group.subtitle}</div> : null}
                   </button>
                 ))}
               </div>
@@ -442,85 +439,33 @@ export function DashboardClient({
         </div>
 
         <div className="flex min-h-0 flex-col p-3">
-          <Input
-            placeholder="Search selected details"
-            value={rightSearch}
-            onChange={(event) => setRightSearch(event.target.value)}
-            className="mb-3"
-          />
-          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60">
-            {!selectedGroup ? (
-              <div className="p-4 text-sm text-muted-foreground">Select an item to view details.</div>
-            ) : (
+          <Input placeholder="Search selected details" value={rightSearch} onChange={(event) => setRightSearch(event.target.value)} className="mb-3" />
+          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/50">
+            {!selectedGroup ? <div className="p-4 text-sm text-muted-foreground">Select an item to view details.</div> : (
               <>
-                {selectedRows.length === 0 ? (
-                  <div className="p-4 text-sm text-muted-foreground">No rows match that detail search.</div>
-                ) : null}
+                {selectedRows.length === 0 ? <div className="p-4 text-sm text-muted-foreground">No rows match that detail search.</div> : null}
 
-                {view === "providerFacility" && selectedRows.length > 0 && (
+                {(view === "providerFacility" || view === "facilityProvider") && selectedRows.length > 0 && (
                   <table className="w-full text-sm">
                     <thead className="bg-muted/40 text-muted-foreground">
                       <tr>
-                        <th className="p-2 text-left font-medium">Facility</th>
-                        <th className="p-2 text-left font-medium">Priority</th>
-                        <th className="p-2 text-left font-medium">Privileges</th>
-                        <th className="p-2 text-left font-medium">Status</th>
-                        <th className="p-2 text-left font-medium">Type</th>
-                        <th className="p-2 text-left font-medium">Application</th>
+                        <SortableHeader label={view === "providerFacility" ? "Facility" : "Provider"} field={view === "providerFacility" ? "facility" : "provider"} activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Priority" field="priority" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Privileges" field="privileges" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Status" field="status" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Type" field="type" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        {view === "providerFacility" ? <SortableHeader label="Application" field="application" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} /> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {(selectedRows as ProviderFacilityRow[]).map((row) => (
                         <tr key={row.id} className="border-t border-border/40">
-                          <td className="p-2">{row.facilityName}</td>
-                          <td className="p-2">
-                            <Badge variant="outline" className={cn(priorityTone(row.priority))}>
-                              {row.priority ?? "—"}
-                            </Badge>
-                          </td>
+                          <td className="p-2">{view === "providerFacility" ? row.facilityName : row.providerName}</td>
+                          <td className="p-2"><Badge variant="outline" className={cn("rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge></td>
                           <td className="p-2">{row.privileges ?? "—"}</td>
-                          <td className="p-2">
-                            <Badge variant="outline" className={cn(statusTone(row.decision))}>
-                              {row.decision ?? "—"}
-                            </Badge>
-                          </td>
+                          <td className="p-2"><Badge variant="outline" className={cn("rounded-sm", statusTone(row.decision))}>{row.decision ?? "—"}</Badge></td>
                           <td className="p-2">{row.facilityType ?? "—"}</td>
-                          <td className="p-2">
-                            {row.applicationRequired === null ? "—" : row.applicationRequired ? "Yes" : "No"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-
-                {view === "facilityProvider" && selectedRows.length > 0 && (
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-muted-foreground">
-                      <tr>
-                        <th className="p-2 text-left font-medium">Provider</th>
-                        <th className="p-2 text-left font-medium">Priority</th>
-                        <th className="p-2 text-left font-medium">Privileges</th>
-                        <th className="p-2 text-left font-medium">Status</th>
-                        <th className="p-2 text-left font-medium">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(selectedRows as ProviderFacilityRow[]).map((row) => (
-                        <tr key={row.id} className="border-t border-border/40">
-                          <td className="p-2">{row.providerName}</td>
-                          <td className="p-2">
-                            <Badge variant="outline" className={cn(priorityTone(row.priority))}>
-                              {row.priority ?? "—"}
-                            </Badge>
-                          </td>
-                          <td className="p-2">{row.privileges ?? "—"}</td>
-                          <td className="p-2">
-                            <Badge variant="outline" className={cn(statusTone(row.decision))}>
-                              {row.decision ?? "—"}
-                            </Badge>
-                          </td>
-                          <td className="p-2">{row.facilityType ?? "—"}</td>
+                          {view === "providerFacility" ? <td className="p-2">{row.applicationRequired === null ? "—" : row.applicationRequired ? "Yes" : "No"}</td> : null}
                         </tr>
                       ))}
                     </tbody>
@@ -534,46 +479,16 @@ export function DashboardClient({
                         <div className="grid gap-2 md:grid-cols-5">
                           <div>
                             <div className="text-xs text-muted-foreground">Priority</div>
-                            <Badge variant="outline" className={cn("mt-1", priorityTone(row.priority))}>
-                              {row.priority ?? "—"}
-                            </Badge>
+                            <Badge variant="outline" className={cn("mt-1 rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge>
                           </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Go Live Date</div>
-                            <div className="mt-1 text-sm">{formatDate(row.goLiveDate)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Credentialing Due</div>
-                            <div className="mt-1 text-sm">{formatDate(row.credentialingDueDate)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Board Meeting</div>
-                            <div className="mt-1 text-sm">{formatDate(row.boardMeetingDate)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Temps Possible</div>
-                            <div className="mt-1 text-sm">
-                              {row.tempsPossible === null ? "—" : row.tempsPossible ? "Yes" : "No"}
-                            </div>
-                          </div>
+                          <div><div className="text-xs text-muted-foreground">Go Live Date</div><div className="mt-1 text-sm">{formatDate(row.goLiveDate)}</div></div>
+                          <div><div className="text-xs text-muted-foreground">Credentialing Due</div><div className="mt-1 text-sm">{formatDate(row.credentialingDueDate)}</div></div>
+                          <div><div className="text-xs text-muted-foreground">Board Meeting</div><div className="mt-1 text-sm">{formatDate(row.boardMeetingDate)}</div></div>
+                          <div><div className="text-xs text-muted-foreground">Temps Possible</div><div className="mt-1 text-sm">{row.tempsPossible === null ? "—" : row.tempsPossible ? "Yes" : "No"}</div></div>
                         </div>
                         <div className="mt-2 grid gap-2 md:grid-cols-2">
-                          <div>
-                            <div className="text-xs text-muted-foreground">Payor Enrollment Required</div>
-                            <div className="mt-1 text-sm">
-                              {row.payorEnrollmentRequired === null
-                                ? "—"
-                                : row.payorEnrollmentRequired
-                                  ? "Yes"
-                                  : "No"}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-foreground">Roles Needed</div>
-                            <div className="mt-1 text-sm">
-                              {row.rolesNeeded.length ? row.rolesNeeded.join(", ") : "—"}
-                            </div>
-                          </div>
+                          <div><div className="text-xs text-muted-foreground">Payor Enrollment Required</div><div className="mt-1 text-sm">{row.payorEnrollmentRequired === null ? "—" : row.payorEnrollmentRequired ? "Yes" : "No"}</div></div>
+                          <div><div className="text-xs text-muted-foreground">Roles Needed</div><div className="mt-1 text-sm">{row.rolesNeeded.length ? row.rolesNeeded.join(", ") : "—"}</div></div>
                         </div>
                       </div>
                     ))}
@@ -584,30 +499,22 @@ export function DashboardClient({
                   <table className="w-full text-sm">
                     <thead className="bg-muted/40 text-muted-foreground">
                       <tr>
-                        <th className="p-2 text-left font-medium">State</th>
-                        <th className="p-2 text-left font-medium">Priority</th>
-                        <th className="p-2 text-left font-medium">Path</th>
-                        <th className="p-2 text-left font-medium">Status</th>
-                        <th className="p-2 text-left font-medium">Initial / Renewal</th>
-                        <th className="p-2 text-left font-medium">Requested</th>
-                        <th className="p-2 text-left font-medium">Final Date</th>
+                        <SortableHeader label="State" field="state" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Priority" field="priority" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Path" field="path" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Status" field="status" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Initial / Renewal" field="initialOrRenewal" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Requested" field="requested" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="Final Date" field="finalDate" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
                       </tr>
                     </thead>
                     <tbody>
                       {(selectedRows as ProviderLicenseRow[]).map((row) => (
                         <tr key={row.id} className="border-t border-border/40">
                           <td className="p-2">{row.state ?? "—"}</td>
-                          <td className="p-2">
-                            <Badge variant="outline" className={cn(priorityTone(row.priority))}>
-                              {row.priority ?? "—"}
-                            </Badge>
-                          </td>
+                          <td className="p-2"><Badge variant="outline" className={cn("rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge></td>
                           <td className="p-2">{row.path ?? "—"}</td>
-                          <td className="p-2">
-                            <Badge variant="outline" className={cn(statusTone(row.status))}>
-                              {row.status ?? "—"}
-                            </Badge>
-                          </td>
+                          <td className="p-2"><Badge variant="outline" className={cn("rounded-sm", statusTone(row.status))}>{row.status ?? "—"}</Badge></td>
                           <td className="p-2">{row.initialOrRenewal ?? "—"}</td>
                           <td className="p-2">{formatDate(row.startsAt)}</td>
                           <td className="p-2">{formatDate(row.expiresAt)}</td>
