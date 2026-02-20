@@ -19,6 +19,12 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Badge } from "~/components/ui/badge";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -77,8 +83,6 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [team, setTeam] = useState<"IN" | "US">("IN");
   const [teamNumber, setTeamNumber] = useState("");
   const [role, setRole] = useState<"user" | "admin" | "superadmin">("user");
@@ -103,8 +107,6 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
 
   const resetForm = () => {
     setSelectedUserId(null);
-    setFirstName("");
-    setLastName("");
     setTeam("IN");
     setTeamNumber("");
     setRole("user");
@@ -119,8 +121,6 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
     if (!selectedUserId || !selectedUser) return;
     assignMutation.mutate({
       userId: selectedUserId,
-      firstName,
-      lastName,
       email: selectedUser.email,
       team,
       teamNumber: teamNumber ? parseInt(teamNumber, 10) : undefined,
@@ -199,25 +199,6 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">First Name</label>
-                  <Input
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="John"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Last Name</label>
-                  <Input
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Doe"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Team</label>
                   <Select
                     value={team}
@@ -268,17 +249,34 @@ function AssignAgentDialog({ onSuccess }: { onSuccess: () => void }) {
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
-          <Button
-            onClick={handleAssign}
-            disabled={
-              !selectedUserId || !firstName.trim() || !lastName.trim() || !team || assignMutation.isPending
-            }
-          >
-            {assignMutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Assign Agent
-          </Button>
+          {(() => {
+            const disabledReason = assignMutation.isPending
+              ? "Assignment in progress…"
+              : !selectedUserId
+              ? "Select a user first"
+              : null;
+            const btn = (
+              <Button
+                onClick={handleAssign}
+                disabled={!!disabledReason}
+              >
+                {assignMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Assign Agent
+              </Button>
+            );
+            return disabledReason ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>{btn}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>{disabledReason}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : btn;
+          })()}
         </ModalFooter>
       </ModalContent>
     </Dialog>
@@ -311,12 +309,28 @@ function ChangeRoleDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="gap-1.5" disabled={disabled}>
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Change Role
-        </Button>
-      </DialogTrigger>
+      {disabled ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>
+                <Button variant="ghost" size="sm" className="gap-1.5" disabled>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Change Role
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>You cannot change your own role</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="sm" className="gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Change Role
+          </Button>
+        </DialogTrigger>
+      )}
 
       <ModalContent className="sm:max-w-sm">
         <ModalHeader>
@@ -357,20 +371,39 @@ function ChangeRoleDialog({
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
-          <Button
-            onClick={() =>
-              updateMutation.mutate({
-                agentId: agent.id,
-                role: newRole as "user" | "admin" | "superadmin",
-              })
-            }
-            disabled={disabled || newRole === agent.role || updateMutation.isPending}
-          >
-            {updateMutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Save
-          </Button>
+          {(() => {
+            const saveDisabledReason = updateMutation.isPending
+              ? "Saving…"
+              : newRole === agent.role
+              ? "Role is already set to this value"
+              : null;
+            const saveBtn = (
+              <Button
+                onClick={() =>
+                  updateMutation.mutate({
+                    agentId: agent.id,
+                    role: newRole as "user" | "admin" | "superadmin",
+                  })
+                }
+                disabled={!!saveDisabledReason}
+              >
+                {updateMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Save
+              </Button>
+            );
+            return saveDisabledReason ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>{saveBtn}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>{saveDisabledReason}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : saveBtn;
+          })()}
         </ModalFooter>
       </ModalContent>
     </Dialog>
@@ -402,17 +435,37 @@ function RemoveAgentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-destructive hover:text-destructive"
-          disabled={disabled}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          Remove
-        </Button>
-      </DialogTrigger>
+      {disabled ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 text-destructive hover:text-destructive"
+                  disabled
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>You cannot remove your own account</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Remove
+          </Button>
+        </DialogTrigger>
+      )}
 
       <ModalContent className="sm:max-w-sm">
         <ModalHeader>
@@ -492,19 +545,19 @@ export default function SuperAdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <AssignAgentDialog onSuccess={refetch} />
-      </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        {/* Search / filter bar */}
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter agents…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
 
-      {/* Search / filter bar */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Filter agents…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8"
-        />
+        <AssignAgentDialog onSuccess={refetch} />
       </div>
 
       {/* Agents table */}
