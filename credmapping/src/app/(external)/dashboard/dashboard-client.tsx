@@ -179,11 +179,11 @@ function rowsMatchSearch(rows: ProviderFacilityRow[] | FacilityPreliveRow[] | Pr
   });
 }
 
-function SortableHeader({ label, field, activeField, direction, onSort }: { label: string; field: DetailSortField; activeField: DetailSortField | null; direction: SortDirection; onSort: (field: DetailSortField) => void }) {
+function SortableHeader({ label, field, activeField, direction, onSort, centered = false }: { label: string; field: DetailSortField; activeField: DetailSortField | null; direction: SortDirection; onSort: (field: DetailSortField) => void; centered?: boolean }) {
   const isActive = field === activeField;
   return (
-    <th className="sticky top-0 z-10 border-b border-r border-border bg-muted/95 p-2 text-left font-medium backdrop-blur-sm">
-      <button type="button" onClick={() => onSort(field)} className="inline-flex items-center gap-1 text-left hover:text-foreground">
+    <th className={cn("sticky top-0 z-10 border-b border-r border-border bg-muted/95 p-2 font-medium backdrop-blur-sm", centered ? "text-center" : "text-left")}>
+      <button type="button" onClick={() => onSort(field)} className={cn("inline-flex items-center gap-1 hover:text-foreground", centered ? "justify-center" : "text-left")}>
         {label}
         {isActive ? direction === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" /> : null}
       </button>
@@ -627,22 +627,22 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
                     <thead className="bg-muted/40 text-muted-foreground">
                       <tr>
                         <SortableHeader label={view === "providerFacility" ? "Facility" : "Provider"} field={view === "providerFacility" ? "facility" : "provider"} activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Priority" field="priority" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Privileges" field="privileges" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Status" field="status" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Type" field="type" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        {view === "providerFacility" ? <SortableHeader label="Application" field="application" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} /> : null}
+                        <SortableHeader label="Priority" field="priority" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Privileges" field="privileges" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Status" field="status" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Type" field="type" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        {view === "providerFacility" ? <SortableHeader label="Application" field="application" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered /> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {(selectedRows as ProviderFacilityRow[]).map((row) => (
                         <tr key={row.id} className="border-t border-border transition-colors hover:bg-muted/30">
                           <td className="border-r border-border p-2">{view === "providerFacility" ? row.facilityName : row.providerName}</td>
-                          <td className="border-r border-border p-2"><Badge variant="outline" className={cn("rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge></td>
-                          <td className="border-r border-border p-2">{row.privileges ?? "—"}</td>
-                          <td className="border-r border-border p-2"><Badge variant="outline" className={cn("rounded-sm", statusTone(row.decision))}>{row.decision ?? "—"}</Badge></td>
-                          <td className="border-r border-border p-2">{row.facilityType ?? "—"}</td>
-                          {view === "providerFacility" ? <td className="p-2">{row.applicationRequired === null ? "—" : row.applicationRequired ? "Yes" : "No"}</td> : null}
+                          <td className="border-r border-border p-2 text-center"><Badge variant="outline" className={cn("rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge></td>
+                          <td className="border-r border-border p-2 text-center">{row.privileges ?? "—"}</td>
+                          <td className="border-r border-border p-2 text-center"><Badge variant="outline" className={cn("rounded-sm", statusTone(row.decision))}>{row.decision ?? "—"}</Badge></td>
+                          <td className="border-r border-border p-2 text-center">{row.facilityType ?? "—"}</td>
+                          {view === "providerFacility" ? <td className="p-2 text-center">{row.applicationRequired === null ? "—" : row.applicationRequired ? "Yes" : "No"}</td> : null}
                         </tr>
                       ))}
                     </tbody>
@@ -676,25 +676,25 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
                   <table className="w-full border-collapse text-sm">
                     <thead className="bg-muted/40 text-muted-foreground">
                       <tr>
-                        <SortableHeader label="State" field="state" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Priority" field="priority" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Path" field="path" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Status" field="status" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Initial / Renewal" field="initialOrRenewal" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Requested" field="requested" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
-                        <SortableHeader label="Final Date" field="finalDate" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} />
+                        <SortableHeader label="State" field="state" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Priority" field="priority" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Path" field="path" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Status" field="status" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Initial / Renewal" field="initialOrRenewal" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Requested" field="requested" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
+                        <SortableHeader label="Final Date" field="finalDate" activeField={detailSortField} direction={detailSortDirection} onSort={onHeaderSort} centered />
                       </tr>
                     </thead>
                     <tbody>
                       {(selectedRows as ProviderLicenseRow[]).map((row) => (
                         <tr key={row.id} className="border-t border-border transition-colors hover:bg-muted/30">
-                          <td className="border-r border-border p-2">{row.state ?? "—"}</td>
-                          <td className="border-r border-border p-2"><Badge variant="outline" className={cn("rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge></td>
-                          <td className="border-r border-border p-2">{row.path ?? "—"}</td>
-                          <td className="border-r border-border p-2"><Badge variant="outline" className={cn("rounded-sm", statusTone(row.status))}>{row.status ?? "—"}</Badge></td>
-                          <td className="border-r border-border p-2">{row.initialOrRenewal ?? "—"}</td>
-                          <td className="border-r border-border p-2">{formatDate(row.startsAt)}</td>
-                          <td className="p-2">{formatDate(row.expiresAt)}</td>
+                          <td className="border-r border-border p-2 text-center">{row.state ?? "—"}</td>
+                          <td className="border-r border-border p-2 text-center"><Badge variant="outline" className={cn("rounded-sm", priorityTone(row.priority))}>{row.priority ?? "—"}</Badge></td>
+                          <td className="border-r border-border p-2 text-center">{row.path ?? "—"}</td>
+                          <td className="border-r border-border p-2 text-center"><Badge variant="outline" className={cn("rounded-sm", statusTone(row.status))}>{row.status ?? "—"}</Badge></td>
+                          <td className="border-r border-border p-2 text-center">{row.initialOrRenewal ?? "—"}</td>
+                          <td className="border-r border-border p-2 text-center">{formatDate(row.startsAt)}</td>
+                          <td className="p-2 text-center">{formatDate(row.expiresAt)}</td>
                         </tr>
                       ))}
                     </tbody>
