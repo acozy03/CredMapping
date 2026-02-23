@@ -31,9 +31,14 @@ const formatProviderName = (provider: {
   lastName: string | null;
   degree: string | null;
 }) => {
-  const fullName = [provider.firstName, provider.middleName, provider.lastName]
+  const firstAndMiddle = [provider.firstName, provider.middleName]
     .filter(Boolean)
     .join(" ");
+  const fullName = provider.lastName
+    ? firstAndMiddle
+      ? `${provider.lastName}, ${firstAndMiddle}`
+      : provider.lastName
+    : firstAndMiddle;
 
   if (!fullName) return "Unnamed Provider";
 
@@ -673,17 +678,17 @@ export default async function ProvidersPage(props: {
               );
             })}
 
-            <div className="border-t pt-3 text-sm">
-              <p className="text-muted-foreground">
-                Showing {providerCards.length} of {totalProviders} providers
-              </p>
-            </div>
-
             <ProvidersAutoAdvance
               enabled={hasMoreProviders}
               nextHref={createLimitHref(Math.min(visibleLimit + pageSize, totalProviders))}
               rootSelector=".providers-scroll-viewport"
             />
+
+            <div className="border-t pt-3 text-sm">
+              <p className="text-muted-foreground">
+                Showing {providerCards.length} of {totalProviders} providers
+              </p>
+            </div>
           </div>
         </VirtualScrollContainer>
       )}
