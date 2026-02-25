@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  Activity,
   AlertTriangle,
   Building2,
   CalendarClock,
@@ -13,6 +14,7 @@ import {
   Stethoscope,
   User,
 } from "lucide-react";
+import { ActivityTimeline } from "~/components/audit-log/ActivityTimeline";
 import { WorkflowPhaseDrawer } from "~/components/providers/workflow-phase-drawer";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -233,6 +235,9 @@ export default async function FacilityProfilePage({
   async function updateWorkflowPhaseAction(formData: FormData) {
     "use server";
 
+    const { createClient } = await import("~/utils/supabase/server");
+    const { resolveAgentId, writeAuditLog } = await import("~/server/api/audit");
+
     const getText = (key: string) => {
       const value = formData.get(key);
       return typeof value === "string" ? value.trim() : "";
@@ -248,18 +253,27 @@ export default async function FacilityProfilePage({
 
     if (!workflowId || !credentialId || !phaseName || !startDate || !dueDate) return;
 
-    const [workflow] = await db
-      .select({
-        id: workflowPhases.id,
-        workflowType: workflowPhases.workflowType,
-      })
+    // Fetch full existing row for audit diff + supporting agents
+    const [existing] = await db
+      .select()
       .from(workflowPhases)
       .where(and(eq(workflowPhases.id, workflowId), eq(workflowPhases.relatedId, credentialId)))
       .limit(1);
 
-    if (workflow?.workflowType !== "pfc") return;
+    if (existing?.workflowType !== "pfc") return;
 
-    await db
+    // Resolve who is making the update
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const actor = user ? await resolveAgentId(db, user.id) : null;
+
+    // Auto-add to supportingAgents if not the assigned agent
+    let supportingAgents = (existing.supportingAgents as string[] | null) ?? [];
+    if (actor && existing.agentAssigned !== actor.id && !supportingAgents.includes(actor.id)) {
+      supportingAgents = [...supportingAgents, actor.id];
+    }
+
+    const [updated] = await db
       .update(workflowPhases)
       .set({
         phaseName,
@@ -267,9 +281,24 @@ export default async function FacilityProfilePage({
         startDate,
         dueDate,
         completedAt: completedAt || null,
+        supportingAgents,
         updatedAt: new Date(),
       })
-      .where(eq(workflowPhases.id, workflowId));
+      .where(eq(workflowPhases.id, workflowId))
+      .returning();
+
+    // Write audit log
+    if (updated) {
+      await writeAuditLog(db, {
+        tableName: "workflow_phases",
+        recordId: workflowId,
+        action: "update",
+        actorId: actor?.id ?? null,
+        actorEmail: actor?.email ?? user?.email ?? null,
+        oldData: existing as unknown as Record<string, unknown>,
+        newData: updated as unknown as Record<string, unknown>,
+      });
+    }
 
     revalidatePath(`/facilities/${facilityId}`);
     revalidatePath("/facilities");
@@ -681,6 +710,16 @@ export default async function FacilityProfilePage({
             );
           })
         )}
+      </section>
+
+      {/* ── Activity Timeline ─────────────────────────────────── */}
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <Activity className="size-5" /> Activity Log
+        </h2>
+        <div className="rounded-md border p-4">
+          <ActivityTimeline entityType="facility" entityId={facilityId} />
+        </div>
       </section>
     </div>
   );
