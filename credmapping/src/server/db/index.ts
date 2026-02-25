@@ -24,6 +24,10 @@ const conn = globalForDb.conn ?? postgres(databaseUrl, {
   prepare: false,
 });
 
+if (env.NODE_ENV !== "production") {
+  globalForDb.conn = conn;
+}
+
 export const db = drizzle({ client: conn, schema });
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
