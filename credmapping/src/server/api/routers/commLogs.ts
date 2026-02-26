@@ -11,6 +11,16 @@ import {
   pendingPSV,
 } from "~/server/db/schema";
 
+const getEarliestFollowUp = (
+  ...dates: Array<string | null | undefined>
+): string | null => {
+  const validDates = dates.filter((date): date is string => Boolean(date));
+  if (validDates.length === 0) return null;
+  return validDates.reduce((earliest, current) =>
+    current < earliest ? current : earliest,
+  );
+};
+
 export const commLogsRouter = createTRPCRouter({
    // listByProvider: Gets the activity feed for the right panel
   listByProvider: protectedProcedure
@@ -142,10 +152,15 @@ export const commLogsRouter = createTRPCRouter({
         information: z.string().min(1),
         roadblocks: z.string().optional(),
         nextFollowUp: z.string().optional(),
+        nextFollowUpUS: z.string().optional(),
+        nextFollowUpIn: z.string().optional(),
         followUpStatus: z.enum(["Completed, Pending Response", "Not Completed"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const nextFollowUpUS = input.nextFollowUpUS ?? input.nextFollowUp ?? null;
+      const nextFollowUpIn = input.nextFollowUpIn ?? input.nextFollowUp ?? null;
+
       const result = await ctx.db
         .insert(missingDocs)
         .values({
@@ -153,7 +168,8 @@ export const commLogsRouter = createTRPCRouter({
           relatedId: input.relatedId,
           information: input.information,
           roadblocks: input.roadblocks ?? null,
-          nextFollowUp: input.nextFollowUp ?? null,
+          nextFollowUpUS,
+          nextFollowUpIn,
           followUpStatus: input.followUpStatus ?? "Not Completed",
           updatedAt: new Date(),
         })
@@ -169,16 +185,22 @@ export const commLogsRouter = createTRPCRouter({
         information: z.string().min(1),
         roadblocks: z.string().optional(),
         nextFollowUp: z.string().optional(),
+        nextFollowUpUS: z.string().optional(),
+        nextFollowUpIn: z.string().optional(),
         followUpStatus: z.enum(["Completed, Pending Response", "Not Completed"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const nextFollowUpUS = input.nextFollowUpUS ?? input.nextFollowUp ?? null;
+      const nextFollowUpIn = input.nextFollowUpIn ?? input.nextFollowUp ?? null;
+
       const result = await ctx.db
         .update(missingDocs)
         .set({
           information: input.information,
           roadblocks: input.roadblocks ?? null,
-          nextFollowUp: input.nextFollowUp ?? null,
+          nextFollowUpUS,
+          nextFollowUpIn,
           followUpStatus: input.followUpStatus ?? "Not Completed",
           updatedAt: new Date(),
         })
@@ -424,7 +446,8 @@ export const providersWithCommLogsRouter = createTRPCRouter({
         ctx.db
           .select({
             relatedId: missingDocs.relatedId,
-            nextFollowUp: missingDocs.nextFollowUp,
+            nextFollowUpUS: missingDocs.nextFollowUpUS,
+            nextFollowUpIn: missingDocs.nextFollowUpIn,
             followUpStatus: missingDocs.followUpStatus,
           })
           .from(missingDocs)
@@ -452,8 +475,13 @@ export const providersWithCommLogsRouter = createTRPCRouter({
       for (const row of missingDocRows) {
         if (!row.relatedId || row.followUpStatus !== "Not Completed") continue;
         const current = missingDocsByProvider.get(row.relatedId);
-        if (!current || (row.nextFollowUp && row.nextFollowUp < current)) {
-          missingDocsByProvider.set(row.relatedId, row.nextFollowUp);
+        const nextFollowUp = getEarliestFollowUp(
+          row.nextFollowUpUS,
+          row.nextFollowUpIn,
+        );
+
+        if (!current || (nextFollowUp && nextFollowUp < current)) {
+          missingDocsByProvider.set(row.relatedId, nextFollowUp);
         }
       }
 
@@ -548,7 +576,8 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
         ctx.db
           .select({
             relatedId: missingDocs.relatedId,
-            nextFollowUp: missingDocs.nextFollowUp,
+            nextFollowUpUS: missingDocs.nextFollowUpUS,
+            nextFollowUpIn: missingDocs.nextFollowUpIn,
             followUpStatus: missingDocs.followUpStatus,
           })
           .from(missingDocs)
@@ -559,8 +588,13 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
       for (const row of missingDocRows) {
         if (!row.relatedId || row.followUpStatus !== "Not Completed") continue;
         const current = missingDocsByFacility.get(row.relatedId);
-        if (!current || (row.nextFollowUp && row.nextFollowUp < current)) {
-          missingDocsByFacility.set(row.relatedId, row.nextFollowUp);
+        const nextFollowUp = getEarliestFollowUp(
+          row.nextFollowUpUS,
+          row.nextFollowUpIn,
+        );
+
+        if (!current || (nextFollowUp && nextFollowUp < current)) {
+          missingDocsByFacility.set(row.relatedId, nextFollowUp);
         }
       }
 
