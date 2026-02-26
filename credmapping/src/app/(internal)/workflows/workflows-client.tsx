@@ -892,9 +892,10 @@ function AddWorkflowDialog() {
           <ModalTitle>Start Credentialing Process</ModalTitle>
         </ModalHeader>
         
-        <div className="space-y-6 py-4 max-h-[75vh] overflow-y-auto px-1">
-          {/* Section: Workflow Type Selector */}
-          <div className="space-y-1.5">
+        <div className="space-y-6 py-4 max-h-[75vh] overflow-y-auto px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          
+          {/* Workflow Type Selector */}
+          <div className="space-y-1.5 px-1">
             <Label>Workflow Type</Label>
             <Select value={workflowType} onValueChange={(v: "pfc" | "state_licenses" | "prelive_pipeline" | "provider_vesta_privileges") => setWorkflowType(v)}>
               <SelectTrigger>
@@ -909,8 +910,8 @@ function AddWorkflowDialog() {
             </Select>
           </div>
 
-          {/* Section: Identifiers */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Identifiers */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-1">
             <div className="space-y-1.5 flex flex-col">
               <Label>Provider *</Label>
               <Popover modal={true} open={openProvider} onOpenChange={setOpenProvider}>
@@ -970,8 +971,8 @@ function AddWorkflowDialog() {
 
           <Separator />
 
-          {/* Section: Relationship Details (PFC Specific) */}
-          <div className="space-y-4">
+          {/* Relationship Details (PFC Specific) */}
+          <div className="space-y-4 px-1">
             <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Relationship Info (PFC Only)</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -991,12 +992,12 @@ function AddWorkflowDialog() {
 
           <Separator />
 
-          {/* Section: Bulk Workflow Phases with Accordion */}
-          <div className="space-y-4">
+          {/* Workflow Phases with Accordion */}
+          <div className="space-y-4 px-1">
             <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Configure Workflow Phases</h4>
-            <Accordion type="single" collapsible className="w-full border rounded-md overflow-hidden">
+            <Accordion type="single" collapsible className="w-full border rounded-md overflow-hidden bg-background">
               {phases.map((phase, index) => (
-                <AccordionItem key={index} value={`phase-${index}`} className="px-3 border-b-0">
+                <AccordionItem key={index} value={`phase-${index}`} className="px-3 border-b last:border-b-0">
                   <AccordionTrigger className="hover:no-underline py-3">
                     <div className="flex items-center gap-3">
                       <Badge variant="secondary" className="h-5 w-5 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
