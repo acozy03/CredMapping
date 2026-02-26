@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "~/components/ui/button";
+import { StandardEmptyState } from "./StandardEmptyState";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import {
@@ -436,9 +437,7 @@ export function PendingPsvManager({
             </table>
           </div>
         ) : (
-          <p className="text-sm text-zinc-500 italic">
-            No matching PSV records found.
-          </p>
+          <StandardEmptyState message="No matching PSV records found." />
         )}
       </div>
     </div>

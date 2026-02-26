@@ -5,6 +5,7 @@ import { SlidersHorizontal, Info } from "lucide-react";
 import { CommLogFeed } from "./CommLogFeed";
 import { NewLogModal } from "./NewLogModal";
 import { MissingDocsManager } from "./MissingDocsManager";
+import { StandardEmptyState } from "./StandardEmptyState";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -298,7 +299,6 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
               <CommLogFeed
                 logs={filteredLogs}
                 isLoading={logsLoading}
-                onNewLog={() => setIsModalOpen(true)}
                 onSelectLog={(log) => {
                   setEditingLog(log);
                   setIsModalOpen(true);
@@ -320,31 +320,35 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
 
         {activeTab === "contacts" && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              {contactData?.contacts?.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4"
-                >
-                  <p className="mb-2 text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-                    {contact.isPrimary
-                      ? "Primary Contact"
-                      : (contact.title ?? "Facility Contact")}
-                  </p>
-                  <p className="text-lg font-medium text-white">
-                    {contact.name}
-                  </p>
-                  {contact.email && (
-                    <p className="text-primary text-sm">{contact.email}</p>
-                  )}
-                  {contact.phone && (
-                    <p className="mt-1 text-sm text-zinc-400">
-                      {contact.phone}
+            {contactData?.contacts?.length ? (
+              <div className="grid grid-cols-2 gap-4">
+                {contactData.contacts.map((contact) => (
+                  <div
+                    key={contact.id}
+                    className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4"
+                  >
+                    <p className="mb-2 text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+                      {contact.isPrimary
+                        ? "Primary Contact"
+                        : (contact.title ?? "Facility Contact")}
                     </p>
-                  )}
-                </div>
-              ))}
-            </div>
+                    <p className="text-lg font-medium text-white">
+                      {contact.name}
+                    </p>
+                    {contact.email && (
+                      <p className="text-primary text-sm">{contact.email}</p>
+                    )}
+                    {contact.phone && (
+                      <p className="mt-1 text-sm text-zinc-400">
+                        {contact.phone}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <StandardEmptyState message="No facility contacts recorded yet." />
+            )}
             <div className="bg-muted/10 rounded-lg border border-zinc-700 p-6">
               <h4 className="mb-3 flex items-center gap-2 text-xs font-bold tracking-widest text-zinc-500 uppercase">
                 <Info className="h-4 w-4" /> Physical Address

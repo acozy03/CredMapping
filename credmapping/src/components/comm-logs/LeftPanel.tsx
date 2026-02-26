@@ -31,8 +31,8 @@ interface LeftPanelProps {
   onSearchChange?: (search: string) => void;
 }
 
-const providerFilters = ["All", "PSV", "Missing Docs", "Completed"];
-const facilityFilters = ["All", "Missing Docs", "General"];
+const providerFilters = ["All", "PSV", "Missing", "Completed"];
+const facilityFilters = ["All", "Missing", "General"];
 
 export function LeftPanel({
   mode,

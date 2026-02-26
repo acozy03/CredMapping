@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "~/components/ui/button";
+import { StandardEmptyState } from "./StandardEmptyState";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import {
@@ -308,9 +309,7 @@ export function MissingDocsManager({
             </table>
           </div>
         ) : (
-          <p className="rounded-lg border border-dashed border-zinc-700 py-8 text-center text-sm text-zinc-500 italic">
-            No matching missing documentation found.
-          </p>
+          <StandardEmptyState message="No matching missing documentation found." />
         )}
       </div>
     </div>

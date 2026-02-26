@@ -300,10 +300,6 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
                   lastUpdatedByName: log.lastUpdatedByName,
                 }))}
                 isLoading={logsLoading}
-                onNewLog={() => {
-                  setEditingLog(null);
-                  setIsModalOpen(true);
-                }}
                 onSelectLog={(log) => {
                   setEditingLog(log);
                   setIsModalOpen(true);
