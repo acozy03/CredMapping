@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { format } from "date-fns";
 import { SlidersHorizontal } from "lucide-react";
 import { CommLogFeed } from "./CommLogFeed";
 import { NewLogModal } from "./NewLogModal";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { Badge } from "~/components/ui/badge";
 import {
   Sheet,
   SheetContent,
@@ -16,6 +14,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "~/components/ui/sheet";
+import { MissingDocsManager } from "./MissingDocsManager";
+import { PendingPsvManager } from "./PendingPsvManager";
 import { api } from "~/trpc/react";
 
 interface ProviderDetailProps {
@@ -32,7 +32,7 @@ interface ProviderDetailProps {
 
 export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
   const utils = api.useUtils();
-  const [activeTab, setActiveTab] = useState<"logs" | "psv" | "notes">("logs");
+  const [activeTab, setActiveTab] = useState<"logs" | "missing-docs" | "psv" | "notes">("logs");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<{
     id: string;
@@ -83,7 +83,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
     return result;
   }, [logs, searchQuery, selectedCommType, selectedAgent, sortOrder]);
 
-  const fullName = [provider.firstName, provider.lastName].filter(Boolean).join(" ");
+  const fullName = [provider.lastName, provider.firstName].filter(Boolean).join(", ");
 
   const handleLogCreated = async () => {
     await Promise.all([
@@ -98,7 +98,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
   return (
     <div className="bg-background flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header Card */}
-      <div className="border-border bg-card border-b p-6">
+      <div className="border-border bg-card min-h-[168px] border-b p-6">
         <div className="mb-4">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-white">{fullName}</h2>
@@ -106,7 +106,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
               {provider.degree ?? "—"}
             </span>
           </div>
-          {provider.email && <p className="text-sm text-zinc-400">{provider.email}</p>}
+          <p className="text-sm text-zinc-400">{provider.email ?? "No provider email listed"}</p>
         </div>
 
         {/* Stats Row */}
@@ -136,7 +136,8 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
       <div className="border-border bg-card flex gap-4 border-b px-6">
         {[
           { id: "logs", label: "Logs" },
-          { id: "psv", label: "Missing Docs & PSV" },
+          { id: "missing-docs", label: "Missing Docs" },
+          { id: "psv", label: "PSV" },
           { id: "notes", label: "Provider Notes" },
         ].map((tab) => (
           <button
@@ -230,66 +231,23 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
           </div>
         )}
 
-        {activeTab === "psv" && (
-          <div className="space-y-8">
-            {/* Missing Docs Section */}
-            <div>
-              <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-rose-400">Active Missing Docs</h3>
-              {docsLoading ? (
-                <div className="h-12 w-full animate-pulse rounded bg-zinc-800" />
-              ) : missingDocs && missingDocs.length > 0 ? (
-                <div className="space-y-3">
-                  {missingDocs.map((doc) => (
-                    <div key={doc.id} className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-semibold text-white">{doc.information}</p>
-                        <Badge variant="outline" className="text-rose-400 border-rose-400/30 text-[10px]">Action Required</Badge>
-                      </div>
-                      <p className="text-sm text-zinc-400 italic">Document Issue: {doc.roadblocks ?? "N/A"}</p>
-                      <p className="mt-2 text-xs text-zinc-500">Next Follow-up: {doc.nextFollowUp ? format(new Date(doc.nextFollowUp), "MMM d, yyyy") : "TBD"}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-500 italic">No missing documentation found.</p>
-              )}
-            </div>
+        {activeTab === "missing-docs" && (
+          <MissingDocsManager
+            relatedType="provider"
+            relatedId={providerId}
+            docs={missingDocs}
+            isLoading={docsLoading}
+            onChanged={handleLogCreated}
+          />
+        )}
 
-            {/* PSV Checklist Section */}
-            <div>
-              <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-blue-400">PSV Checklist</h3>
-              {psvLoading ? (
-                <div className="space-y-2">
-                  {[1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded bg-zinc-800" />)}
-                </div>
-              ) : pendingPSVs && pendingPSVs.length > 0 ? (
-                <div className="overflow-hidden rounded-lg border border-zinc-700 bg-card">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700 bg-muted/50 text-zinc-400">
-                        <th className="px-4 py-3 text-left font-medium">Verification Type</th>
-                        <th className="px-4 py-3 text-left font-medium">Status</th>
-                        <th className="px-4 py-3 text-left font-medium">Requested</th>
-                        <th className="px-4 py-3 text-left font-medium">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {pendingPSVs.map((psv) => (
-                        <tr key={psv.id} className="hover:bg-zinc-900/50">
-                          <td className="px-4 py-3 font-medium text-zinc-200">{psv.type}</td>
-                          <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{psv.status}</Badge></td>
-                          <td className="px-4 py-3 text-zinc-400">{format(new Date(psv.dateRequested), "MMM d, yyyy")}</td>
-                          <td className="px-4 py-3 text-zinc-500 truncate max-w-50">{psv.notes ?? "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-500 italic">No verifications in progress.</p>
-              )}
-            </div>
-          </div>
+        {activeTab === "psv" && (
+          <PendingPsvManager
+            providerId={providerId}
+            psvs={pendingPSVs}
+            isLoading={psvLoading}
+            onChanged={handleLogCreated}
+          />
         )}
 
         {activeTab === "notes" && (
