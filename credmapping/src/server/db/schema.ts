@@ -109,7 +109,7 @@ export const providers = pgTable("providers", {
 
 export const workflowPhases = pgTable("workflow_phases", {
   id: uuid("id").defaultRandom().primaryKey(),
-  agentAssigned: uuid("agent_assigned").references(() => agents.id),
+  agentAssigned: uuid("agent_assigned").notNull().references(() => agents.id),
   supportingAgents: jsonb("supporting_agents"), 
   workflowType: workflowType("workflow_type").notNull(), 
   relatedId: uuid("related_id").notNull(),  
@@ -194,7 +194,9 @@ export const incidentLogs = pgTable("incident_logs", {
   escalatedTo: uuid("escalated_to").references(() => agents.id).notNull(), 
   dateIdentified: date("date_identified").notNull(),
   resolutionDate: date("resolution_date"), 
-  subcategory: text("subcategory").notNull(), 
+  subcategory: text("subcategory").notNull(),
+  rootCauseIdentified: boolean("root_cause_identified"),
+  rootCauseDescription: text("root_cause_description"), 
   critical: boolean("critical").notNull(), 
   incidentDescription: text("incident_description"), 
   immediateResolutionAttempt: text("immediate_resolution_attempt"), 
