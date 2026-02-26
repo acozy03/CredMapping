@@ -22,7 +22,7 @@ type MissingDoc = {
   information: string | null;
   roadblocks: string | null;
   nextFollowUp: string | null;
-  followUpStatus: "Completed, Pending Response" | "Not Completed" | null;
+  followUpStatus: "Completed" | "Pending Response" | "Not Completed" | null;
 };
 
 interface MissingDocsManagerProps {
@@ -65,7 +65,7 @@ export function MissingDocsManager({
       .filter((doc) => {
         if (statusFilter === "all") return true;
         const isCompleted =
-          doc.followUpStatus === "Completed, Pending Response";
+          doc.followUpStatus === "Completed";
         return statusFilter === "completed" ? isCompleted : !isCompleted;
       })
       .filter((doc) => {

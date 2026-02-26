@@ -22,7 +22,7 @@ export function TruncatedTooltip({
   ...props
 }: TruncatedTooltipProps) {
   const [isOverflowed, setIsOverflowed] = useState(false);
-  const textRef = useRef<HTMLElement | null>(null);
+  const textRef = useRef<HTMLDivElement | null>(null);
   const Component = as;
 
   const checkOverflow = useCallback(() => {

@@ -142,7 +142,7 @@ export const commLogsRouter = createTRPCRouter({
         information: z.string().min(1),
         roadblocks: z.string().optional(),
         nextFollowUp: z.string().optional(),
-        followUpStatus: z.enum(["Completed, Pending Response", "Not Completed"]).optional(),
+        followUpStatus: z.enum(["Completed", "Pending Response", "Not Completed"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -169,7 +169,7 @@ export const commLogsRouter = createTRPCRouter({
         information: z.string().min(1),
         roadblocks: z.string().optional(),
         nextFollowUp: z.string().optional(),
-        followUpStatus: z.enum(["Completed, Pending Response", "Not Completed"]).optional(),
+        followUpStatus: z.enum(["Completed", "Pending Response", "Not Completed"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
