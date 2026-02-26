@@ -214,7 +214,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-9 flex-1"
-                  placeholder="Search communication logs"
+                  placeholder="Search communication logs..."
                 />
 
                 {/* Sheet Filter Menu */}

@@ -130,18 +130,18 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
     <div className="bg-card flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header Card */}
       <div className="border-border bg-card border-b p-6">
-        <div className="mb-4">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-white">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="mb-2 truncate text-2xl font-bold text-white">
               {fullName}
             </h2>
-            <span className="border-border bg-secondary text-secondary-foreground rounded border px-2 py-1 text-xs font-medium">
-              {provider.degree ?? "—"}
-            </span>
+            <p className="text-sm text-zinc-400">
+              {provider.email ?? "No provider email listed"}
+            </p>
           </div>
-          <p className="text-sm text-zinc-400">
-            {provider.email ?? "No provider email listed"}
-          </p>
+          <span className="border-border bg-secondary text-secondary-foreground rounded border px-2 py-1 text-xs font-medium">
+            {provider.degree ?? "—"}
+          </span>
         </div>
 
         {/* Stats Row */}
@@ -204,7 +204,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   className="h-9 min-w-60 flex-1"
-                  placeholder="Search activity diary..."
+                  placeholder="Search communication logs..."
                 />
                 <div className="ml-auto flex items-center gap-2">
                   <Sheet>
@@ -296,7 +296,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
                         setIsModalOpen(true);
                       }}
                     >
-                      + Log Interaction
+                      + Add Comm Log
                     </Button>
                   )}
                 </div>

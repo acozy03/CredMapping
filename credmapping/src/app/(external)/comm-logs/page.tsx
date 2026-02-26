@@ -90,12 +90,17 @@ export default function CommLogsPage() {
 
   const mappedItems = useMemo(
     () =>
-      items.map((item) => {
+      items
+        .map((item) => {
         if (mode === "provider") {
           const provider = item as ProviderWithStatus;
+          const fullName = [provider.lastName, provider.firstName]
+            .filter((value): value is string => Boolean(value?.trim()))
+            .join(", ");
+
           return {
             id: provider.id,
-            name: `${provider.lastName ?? ""}, ${provider.firstName ?? ""}`,
+            name: fullName,
             subText: provider.email ?? undefined,
             statusDots: buildStatusDots({
               hasMissingDocs: provider.hasMissingDocs,
@@ -116,7 +121,8 @@ export default function CommLogsPage() {
             isComplete: !facility.hasMissingDocs,
           }),
         };
-      }),
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
     [items, mode],
   );
 
