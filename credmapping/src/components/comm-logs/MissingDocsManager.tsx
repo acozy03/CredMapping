@@ -21,7 +21,8 @@ type MissingDoc = {
   id: string;
   information: string | null;
   roadblocks: string | null;
-  nextFollowUp: string | null;
+  nextFollowUpUS: string | null;
+  nextFollowUpIn: string | null;
   followUpStatus: "Completed, Pending Response" | "Not Completed" | null;
 };
 
@@ -36,7 +37,8 @@ interface MissingDocsManagerProps {
 const defaultForm = {
   information: "",
   roadblocks: "",
-  nextFollowUp: "",
+  nextFollowUpUS: "",
+  nextFollowUpIn: "",
 };
 
 export function MissingDocsManager({
@@ -76,8 +78,12 @@ export function MissingDocsManager({
       });
 
     rows.sort((a, b) => {
-      const valueA = a.nextFollowUp ?? "9999-12-31";
-      const valueB = b.nextFollowUp ?? "9999-12-31";
+      const valueA = [a.nextFollowUpUS, a.nextFollowUpIn]
+        .filter((value): value is string => Boolean(value))
+        .sort()[0] ?? "9999-12-31";
+      const valueB = [b.nextFollowUpUS, b.nextFollowUpIn]
+        .filter((value): value is string => Boolean(value))
+        .sort()[0] ?? "9999-12-31";
       return sortOrder === "soonest"
         ? valueA.localeCompare(valueB)
         : valueB.localeCompare(valueA);
@@ -104,7 +110,8 @@ export function MissingDocsManager({
     setForm({
       information: doc.information ?? "",
       roadblocks: doc.roadblocks ?? "",
-      nextFollowUp: doc.nextFollowUp ?? "",
+      nextFollowUpUS: doc.nextFollowUpUS ?? "",
+      nextFollowUpIn: doc.nextFollowUpIn ?? "",
     });
   };
 
@@ -114,7 +121,8 @@ export function MissingDocsManager({
     const payload = {
       information: form.information,
       roadblocks: form.roadblocks || undefined,
-      nextFollowUp: form.nextFollowUp || undefined,
+      nextFollowUpUS: form.nextFollowUpUS || undefined,
+      nextFollowUpIn: form.nextFollowUpIn || undefined,
       followUpStatus: "Not Completed" as const,
     };
 
@@ -205,7 +213,7 @@ export function MissingDocsManager({
 
       <div className="space-y-4 px-6 py-4">
         {isEditing && (
-          <div className="mb-4 grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 md:grid-cols-3">
+          <div className="mb-4 grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 md:grid-cols-4">
             <div className="space-y-1">
               <label className="text-xs text-zinc-400">Required Item</label>
               <Input
@@ -218,13 +226,25 @@ export function MissingDocsManager({
             </div>
             <div className="space-y-1">
               <label className="text-xs text-zinc-400">
-                Next Follow-up Date
+                Next Follow-up Date (US)
               </label>
               <Input
                 type="date"
-                value={form.nextFollowUp}
+                value={form.nextFollowUpUS}
                 onChange={(e) =>
-                  setForm((s) => ({ ...s, nextFollowUp: e.target.value }))
+                  setForm((s) => ({ ...s, nextFollowUpUS: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">
+                Next Follow-up Date (IN)
+              </label>
+              <Input
+                type="date"
+                value={form.nextFollowUpIn}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, nextFollowUpIn: e.target.value }))
                 }
               />
             </div>
@@ -232,7 +252,7 @@ export function MissingDocsManager({
               <label className="text-xs text-zinc-400">Record Status</label>
               <Input value="Not Completed" disabled />
             </div>
-            <div className="space-y-1 md:col-span-3">
+            <div className="space-y-1 md:col-span-4">
               <label className="text-xs text-zinc-400">Issue / Notes</label>
               <Textarea
                 rows={3}
@@ -243,7 +263,7 @@ export function MissingDocsManager({
                 }
               />
             </div>
-            <div className="flex justify-end gap-2 md:col-span-3">
+            <div className="flex justify-end gap-2 md:col-span-4">
               <Button variant="outline" onClick={resetEditor}>
                 Cancel
               </Button>
@@ -271,9 +291,8 @@ export function MissingDocsManager({
                     Issue / Notes
                   </th>
                   <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-left font-medium">
-                    Next Follow-up
-                  </th>
+                  <th className="px-4 py-3 text-left font-medium">Next Follow-up (US)</th>
+                  <th className="px-4 py-3 text-left font-medium">Next Follow-up (IN)</th>
                   <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
@@ -290,8 +309,13 @@ export function MissingDocsManager({
                       {doc.followUpStatus ?? "Not Completed"}
                     </td>
                     <td className="px-4 py-3 text-zinc-400">
-                      {doc.nextFollowUp
-                        ? format(new Date(doc.nextFollowUp), "MMM d, yyyy")
+                      {doc.nextFollowUpUS
+                        ? format(new Date(doc.nextFollowUpUS), "MMM d, yyyy")
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-400">
+                      {doc.nextFollowUpIn
+                        ? format(new Date(doc.nextFollowUpIn), "MMM d, yyyy")
                         : "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
