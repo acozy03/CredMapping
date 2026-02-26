@@ -134,6 +134,152 @@ export const commLogsRouter = createTRPCRouter({
         .orderBy(desc(pendingPSV.updatedAt));
     }),
 
+  createMissingDoc: protectedProcedure
+    .input(
+      z.object({
+        relatedType: z.enum(["provider", "facility"]),
+        relatedId: z.string().uuid(),
+        information: z.string().min(1),
+        roadblocks: z.string().optional(),
+        nextFollowUp: z.string().optional(),
+        followUpStatus: z.enum(["Completed, Pending Response", "Not Completed"]).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db
+        .insert(missingDocs)
+        .values({
+          relatedType: input.relatedType,
+          relatedId: input.relatedId,
+          information: input.information,
+          roadblocks: input.roadblocks ?? null,
+          nextFollowUp: input.nextFollowUp ?? null,
+          followUpStatus: input.followUpStatus ?? "Not Completed",
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      return result[0];
+    }),
+
+  updateMissingDoc: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        information: z.string().min(1),
+        roadblocks: z.string().optional(),
+        nextFollowUp: z.string().optional(),
+        followUpStatus: z.enum(["Completed, Pending Response", "Not Completed"]).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db
+        .update(missingDocs)
+        .set({
+          information: input.information,
+          roadblocks: input.roadblocks ?? null,
+          nextFollowUp: input.nextFollowUp ?? null,
+          followUpStatus: input.followUpStatus ?? "Not Completed",
+          updatedAt: new Date(),
+        })
+        .where(eq(missingDocs.id, input.id))
+        .returning();
+
+      return result[0];
+    }),
+
+  deleteMissingDoc: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db
+        .delete(missingDocs)
+        .where(eq(missingDocs.id, input.id))
+        .returning({ id: missingDocs.id });
+
+      return result[0] ?? null;
+    }),
+
+  createPendingPSV: protectedProcedure
+    .input(
+      z.object({
+        providerId: z.string().uuid(),
+        status: z.enum(["Not Started", "Requested", "Received", "Inactive Rad", "Closed", "Not Affiliated", "Old Request", "Hold"]),
+        type: z.enum(["Education", "Work", "Hospital", "Peer", "COI/Loss Run", "Claims Document", "Board Actions", "Locums/Work", "Vesta Practice Location", "Vesta Hospital", "Work COI", "OPPE"]),
+        name: z.string().min(1),
+        dateRequested: z.string(),
+        nextFollowUp: z.string().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const parsedUserId = z.string().uuid().safeParse(ctx.user.id);
+      const [currentAgent] = parsedUserId.success
+        ? await ctx.db.select({ id: agents.id }).from(agents).where(eq(agents.userId, parsedUserId.data)).limit(1)
+        : [];
+
+      if (!currentAgent) {
+        throw new Error("No linked agent found for current user.");
+      }
+
+      const result = await ctx.db
+        .insert(pendingPSV)
+        .values({
+          providerId: input.providerId,
+          agentAssigned: currentAgent.id,
+          status: input.status,
+          type: input.type,
+          name: input.name,
+          dateRequested: input.dateRequested,
+          nextFollowUp: input.nextFollowUp ?? null,
+          notes: input.notes ?? null,
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      return result[0];
+    }),
+
+  updatePendingPSV: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        status: z.enum(["Not Started", "Requested", "Received", "Inactive Rad", "Closed", "Not Affiliated", "Old Request", "Hold"]),
+        type: z.enum(["Education", "Work", "Hospital", "Peer", "COI/Loss Run", "Claims Document", "Board Actions", "Locums/Work", "Vesta Practice Location", "Vesta Hospital", "Work COI", "OPPE"]),
+        name: z.string().min(1),
+        dateRequested: z.string(),
+        nextFollowUp: z.string().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db
+        .update(pendingPSV)
+        .set({
+          status: input.status,
+          type: input.type,
+          name: input.name,
+          dateRequested: input.dateRequested,
+          nextFollowUp: input.nextFollowUp ?? null,
+          notes: input.notes ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(pendingPSV.id, input.id))
+        .returning();
+
+      return result[0];
+    }),
+
+  deletePendingPSV: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.db
+        .delete(pendingPSV)
+        .where(eq(pendingPSV.id, input.id))
+        .returning({ id: pendingPSV.id });
+
+      return result[0] ?? null;
+    }),
+
   // getSummary: A quick stats overview for the top of the detail panel
   getSummary: protectedProcedure
     .input(z.object({ 
@@ -149,7 +295,13 @@ export const commLogsRouter = createTRPCRouter({
       const docs = await ctx.db
         .select({ count: count() })
         .from(missingDocs)
-        .where(and(eq(missingDocs.relatedId, input.relatedId), eq(missingDocs.relatedType, input.relatedType)));
+        .where(
+          and(
+            eq(missingDocs.relatedId, input.relatedId),
+            eq(missingDocs.relatedType, input.relatedType),
+            eq(missingDocs.followUpStatus, "Not Completed"),
+          ),
+        );
 
       return {
         totalLogs: logs[0]?.count ?? 0,
@@ -273,6 +425,7 @@ export const providersWithCommLogsRouter = createTRPCRouter({
           .select({
             relatedId: missingDocs.relatedId,
             nextFollowUp: missingDocs.nextFollowUp,
+            followUpStatus: missingDocs.followUpStatus,
           })
           .from(missingDocs)
           .where(eq(missingDocs.relatedType, "provider")),
@@ -297,7 +450,7 @@ export const providersWithCommLogsRouter = createTRPCRouter({
 
       const missingDocsByProvider = new Map<string, string | null>();
       for (const row of missingDocRows) {
-        if (!row.relatedId) continue;
+        if (!row.relatedId || row.followUpStatus !== "Not Completed") continue;
         const current = missingDocsByProvider.get(row.relatedId);
         if (!current || (row.nextFollowUp && row.nextFollowUp < current)) {
           missingDocsByProvider.set(row.relatedId, row.nextFollowUp);
@@ -306,6 +459,7 @@ export const providersWithCommLogsRouter = createTRPCRouter({
 
       const psvByProvider = new Map<string, { status: string; nextFollowUp: string | null }>();
       for (const row of pendingPsvRows) {
+        if (row.status === "Closed") continue;
         const existing = psvByProvider.get(row.providerId);
         if (!existing) {
           psvByProvider.set(row.providerId, {
@@ -395,6 +549,7 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
           .select({
             relatedId: missingDocs.relatedId,
             nextFollowUp: missingDocs.nextFollowUp,
+            followUpStatus: missingDocs.followUpStatus,
           })
           .from(missingDocs)
           .where(eq(missingDocs.relatedType, "facility")),
@@ -402,7 +557,7 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
 
       const missingDocsByFacility = new Map<string, string | null>();
       for (const row of missingDocRows) {
-        if (!row.relatedId) continue;
+        if (!row.relatedId || row.followUpStatus !== "Not Completed") continue;
         const current = missingDocsByFacility.get(row.relatedId);
         if (!current || (row.nextFollowUp && row.nextFollowUp < current)) {
           missingDocsByFacility.set(row.relatedId, row.nextFollowUp);

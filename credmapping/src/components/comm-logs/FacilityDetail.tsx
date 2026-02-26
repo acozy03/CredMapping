@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { format } from "date-fns";
 import { SlidersHorizontal, Info } from "lucide-react";
 import { CommLogFeed } from "./CommLogFeed";
 import { NewLogModal } from "./NewLogModal";
+import { MissingDocsManager } from "./MissingDocsManager";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -90,7 +90,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
 
   return (
     <div className="bg-background flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="border-border bg-card border-b p-6 shadow-sm">
+      <div className="border-border bg-card min-h-[168px] border-b p-6">
         <div className="mb-4 flex items-start justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 mb-1">
@@ -130,7 +130,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
 
       <div className="border-border bg-card flex gap-4 border-b px-6">
         {[
-          { id: "logs", label: "Comm Log" },
+          { id: "logs", label: "Logs" },
           { id: "missing-docs", label: "Missing Docs" },
           { id: "contacts", label: "Contact Info & Notes" },
         ].map((tab) => (
@@ -213,37 +213,13 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
         )}
 
         {activeTab === "missing-docs" && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-rose-400">Active Missing Documentation</h3>
-            {docsLoading ? (
-              <div className="h-12 w-full animate-pulse rounded bg-zinc-800" />
-            ) : missingDocs && missingDocs.length > 0 ? (
-              <div className="overflow-hidden rounded-lg border border-zinc-700">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-700 bg-muted/50 text-zinc-400">
-                      <th className="px-4 py-3 text-left font-medium">Information</th>
-                      <th className="px-4 py-3 text-left font-medium">Issue</th>
-                      <th className="px-4 py-3 text-left font-medium">Next Follow-up</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800">
-                    {missingDocs.map((doc) => (
-                      <tr key={doc.id} className="hover:bg-zinc-900/50">
-                        <td className="px-4 py-3 text-zinc-200 font-medium">{doc.information}</td>
-                        <td className="px-4 py-3 text-zinc-400 italic">&quot;{doc.roadblocks}&quot;</td>
-                        <td className="px-4 py-3 text-zinc-400">
-                          {doc.nextFollowUp ? format(new Date(doc.nextFollowUp), "MMM d, yyyy") : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-zinc-500 italic py-8 text-center border border-dashed border-zinc-700 rounded-lg">No active missing documentation found.</p>
-            )}
-          </div>
+          <MissingDocsManager
+            relatedType="facility"
+            relatedId={facilityId}
+            docs={missingDocs}
+            isLoading={docsLoading}
+            onChanged={handleLogCreated}
+          />
         )}
 
         {activeTab === "contacts" && (

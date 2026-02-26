@@ -16,6 +16,7 @@ type ProviderWithStatus = {
   latestStatus: string | null;
   nextFollowupAt: Date | null;
   hasMissingDocs?: boolean;
+  hasPSV?: boolean;
 };
 
 type FacilityWithStatus = {
@@ -28,6 +29,24 @@ type FacilityWithStatus = {
   hasMissingDocs: boolean;
 };
 
+const buildStatusDots = (options: {
+  hasMissingDocs?: boolean;
+  hasPSV?: boolean;
+  nextFollowupAt?: Date | string | null;
+  isComplete?: boolean;
+}) => {
+  const dots: Array<"red" | "blue" | "amber" | "green"> = [];
+  const now = Date.now();
+  const followupTime = options.nextFollowupAt ? new Date(options.nextFollowupAt).getTime() : null;
+
+  if (followupTime && followupTime < now) dots.push("red");
+  if (options.hasPSV) dots.push("blue");
+  if (options.hasMissingDocs) dots.push("amber");
+  if (!options.hasMissingDocs && !options.hasPSV && options.isComplete) dots.push("green");
+
+  return dots;
+};
+
 export default function CommLogsPage() {
   const searchParams = useSearchParams();
   const initialMode = (searchParams.get("mode") as "provider" | "facility") ?? "provider";
@@ -38,24 +57,22 @@ export default function CommLogsPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
 
-  // Fetch providers with PSV/Docs awareness
   const { data: providers, isLoading: providersLoading } =
     api.providersWithCommLogs.listWithCommLogStatus.useQuery(
       {
         search,
-        filter: filter.toLowerCase().replace(" ", "-"), 
+        filter: filter.toLowerCase().replace(" ", "-"),
       },
-      { enabled: mode === "provider" }
+      { enabled: mode === "provider" },
     );
 
-  // Fetch facilities with Roadblock awareness
   const { data: facilities, isLoading: facilitiesLoading } =
     api.facilitiesWithCommLogs.listWithCommLogStatus.useQuery(
       {
         search,
         filter: filter.toLowerCase().replace(" ", "-"),
       },
-      { enabled: mode === "facility" }
+      { enabled: mode === "facility" },
     );
 
   const items = useMemo(
@@ -73,9 +90,12 @@ export default function CommLogsPage() {
             id: provider.id,
             name: `${provider.lastName ?? ""}, ${provider.firstName ?? ""}`,
             subText: provider.email ?? undefined,
-            rightMeta: provider.degree ?? undefined,
-            nextFollowupAt: provider.nextFollowupAt,
-            status: provider.latestStatus, // Shows "Missing Docs" or "PSV: Status"
+            statusDots: buildStatusDots({
+              hasMissingDocs: provider.hasMissingDocs,
+              hasPSV: provider.hasPSV,
+              nextFollowupAt: provider.nextFollowupAt,
+              isComplete: true,
+            }),
           };
         }
 
@@ -83,15 +103,16 @@ export default function CommLogsPage() {
         return {
           id: facility.id,
           name: facility.name ?? "",
-          rightMeta: facility.state ?? undefined,
-          nextFollowupAt: facility.nextFollowupAt,
-          status: facility.latestStatus,
+          statusDots: buildStatusDots({
+            hasMissingDocs: facility.hasMissingDocs,
+            nextFollowupAt: facility.nextFollowupAt,
+            isComplete: !facility.hasMissingDocs,
+          }),
         };
       }),
     [items, mode],
   );
 
-  // Auto-selection logic
   useEffect(() => {
     if (isLoading) return;
     if (mappedItems.length === 0) {
@@ -115,13 +136,11 @@ export default function CommLogsPage() {
     setSearch("");
   };
 
-  const selectedProvider = selectedId && mode === "provider"
-    ? (providers ?? []).find((p) => p.id === selectedId)
-    : null;
+  const selectedProvider =
+    selectedId && mode === "provider" ? (providers ?? []).find((p) => p.id === selectedId) : null;
 
-  const selectedFacility = selectedId && mode === "facility"
-    ? (facilities ?? []).find((f) => f.id === selectedId)
-    : null;
+  const selectedFacility =
+    selectedId && mode === "facility" ? (facilities ?? []).find((f) => f.id === selectedId) : null;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-background">
