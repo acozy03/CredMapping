@@ -11,12 +11,12 @@ export function ActionBadge({ action, className }: ActionBadgeProps) {
   const badgeConfig = {
     insert: {
       bg: "bg-green-500/15",
-      text: "text-green-400",
+      text: "text-green-600 dark:text-green-400",
       border: "border-green-500/20",
     },
     update: {
       bg: "bg-yellow-500/15",
-      text: "text-yellow-400",
+      text: "text-yellow-600 dark:text-yellow-400",
       border: "border-yellow-500/20",
     },
     delete: {

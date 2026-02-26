@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/ui/tooltip";
+import { TruncatedTooltip } from "~/components/ui/truncated-tooltip";
 import { ActionBadge } from "~/components/audit-log/ActionBadge";
 import { DiffPanel } from "~/components/audit-log/DiffPanel";
 import { cn } from "~/lib/utils";
@@ -97,7 +98,7 @@ function RecordIdCell({ recordId }: { recordId: string | null }) {
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"
-                  className="text-green-400"
+                  className="text-green-600 dark:text-green-400"
                 >
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -122,11 +123,11 @@ function RecordIdCell({ recordId }: { recordId: string | null }) {
           side="top"
           className="font-mono text-xs max-w-xs break-all"
         >
-          <p className="text-muted-foreground text-[10px] mb-0.5">
+          <p className="text-background/60 text-[10px] mb-0.5">
             Record ID
           </p>
           <p>{recordId}</p>
-          <p className="text-muted-foreground/60 text-[10px] mt-1">
+          <p className="text-background/50 text-[10px] mt-1">
             {copied ? "✓ Copied!" : "Click icon to copy"}
           </p>
         </TooltipContent>
@@ -180,17 +181,21 @@ export function AuditLogRow({
         </div>
 
         {/* User */}
-        <div className="text-xs text-foreground truncate font-mono min-w-0">
-          {user ?? "System"}
-        </div>
+        <TruncatedTooltip content={user ?? "System"} side="top">
+          <div className="text-xs text-foreground truncate font-mono min-w-0">
+            {user ?? "System"}
+          </div>
+        </TruncatedTooltip>
 
         {/* Action */}
         <ActionBadge action={action} />
 
         {/* Table Name */}
-        <div className="text-xs text-primary font-mono truncate min-w-0">
-          {tableName}
-        </div>
+        <TruncatedTooltip content={tableName} side="top">
+          <div className="text-xs text-primary font-mono truncate min-w-0">
+            {tableName}
+          </div>
+        </TruncatedTooltip>
 
         {/* Record ID */}
         <RecordIdCell recordId={recordId} />
@@ -201,7 +206,7 @@ export function AuditLogRow({
             {displayFields.map((field) => (
               <span
                 key={field}
-                className="inline-flex items-center rounded border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-xs text-yellow-400 font-mono whitespace-nowrap"
+                className="inline-flex items-center rounded border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-xs text-yellow-600 dark:text-yellow-400 font-mono whitespace-nowrap"
               >
                 {field}
               </span>
