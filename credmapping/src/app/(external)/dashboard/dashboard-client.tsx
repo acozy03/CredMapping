@@ -469,14 +469,14 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border">
       <div className="border-b border-border p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-2">
+        <div className="w-full">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
             {viewButtons.map((button) => (
               <Button
                 key={button.key}
                 size="sm"
                 variant={view === button.key ? "default" : "outline"}
-                className={cn(view !== button.key && "border-border")}
+                className={cn("w-full", view !== button.key && "border-border")}
                 onClick={() => {
                   setView(button.key);
                   setSelectedKey(null);
@@ -490,9 +490,44 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
             ))}
           </div>
 
+        </div>
+      </div>
+
+      <div className={cn(
+        "grid min-h-0 flex-1 grid-cols-1",
+        view !== "providerVestaPrivileges" && "md:grid-cols-[330px_1fr]"
+      )}>
+        {view !== "providerVestaPrivileges" && (
+          <div className="flex min-h-0 flex-col border-r border-border p-3">
+            <Input placeholder={view === "providerFacility" || view === "providerLicense" ? "Search providers" : "Search facilities"} value={leftSearch} onChange={(event) => setLeftSearch(event.target.value)} className="mb-3" />
+            <div className="hide-scrollbar min-h-0 flex-1 overflow-auto">
+              {activeGroups.length === 0 ? <div className="rounded-md border border-border p-4 text-sm text-muted-foreground">No records match the current filters.</div> : (
+                <div className="space-y-1">
+                  {activeGroups.map((group) => (
+                    <button key={group.key} type="button" onClick={() => setSelectedKey(group.key)} className={cn("w-full rounded-md border px-3 py-2 text-left transition", selectedGroup?.key === group.key ? "border-primary/60 bg-primary/10" : "border-border hover:bg-muted/40")}>
+                      <div className="flex items-center justify-between gap-2">
+                        <TruncatedTooltip text={group.label} className="font-medium" />
+                        {group.subtitle ? <div className="text-xs text-muted-foreground">{group.subtitle}</div> : null}
+                      </div>
+                    </button>
+                  ))}
+                  <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                    <span className="h-px w-6 bg-border" />
+                    {activeGroups.length} of {groupsForView.length} shown
+                    <span className="h-px w-6 bg-border" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex min-h-0 flex-col p-3">
+          <div className="mb-3 flex items-center gap-2">
+            <Input placeholder="Search selected details" value={rightSearch} onChange={(event) => setRightSearch(event.target.value)} />
           <Sheet>
             <SheetTrigger asChild>
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" className="shrink-0">
                 <SlidersHorizontal className="size-4" />
                 Filters
               </Button>
@@ -673,40 +708,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
               </div>
             </SheetContent>
           </Sheet>
-        </div>
-      </div>
-
-      <div className={cn(
-        "grid min-h-0 flex-1 grid-cols-1",
-        view !== "providerVestaPrivileges" && "md:grid-cols-[330px_1fr]"
-      )}>
-        {view !== "providerVestaPrivileges" && (
-          <div className="flex min-h-0 flex-col border-r border-border p-3">
-            <Input placeholder={view === "providerFacility" || view === "providerLicense" ? "Search providers" : "Search facilities"} value={leftSearch} onChange={(event) => setLeftSearch(event.target.value)} className="mb-3" />
-            <div className="hide-scrollbar min-h-0 flex-1 overflow-auto">
-              {activeGroups.length === 0 ? <div className="rounded-md border border-border p-4 text-sm text-muted-foreground">No records match the current filters.</div> : (
-                <div className="space-y-1">
-                  {activeGroups.map((group) => (
-                    <button key={group.key} type="button" onClick={() => setSelectedKey(group.key)} className={cn("w-full rounded-md border px-3 py-2 text-left transition", selectedGroup?.key === group.key ? "border-primary/60 bg-primary/10" : "border-border hover:bg-muted/40")}>
-                      <div className="flex items-center justify-between gap-2">
-                        <TruncatedTooltip text={group.label} className="font-medium" />
-                        {group.subtitle ? <div className="text-xs text-muted-foreground">{group.subtitle}</div> : null}
-                      </div>
-                    </button>
-                  ))}
-                  <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-                    <span className="h-px w-6 bg-border" />
-                    {activeGroups.length} of {groupsForView.length} shown
-                    <span className="h-px w-6 bg-border" />
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
-        )}
-
-        <div className="flex min-h-0 flex-col p-3">
-          <Input placeholder="Search selected details" value={rightSearch} onChange={(event) => setRightSearch(event.target.value)} className="mb-3" />
           <div className="hide-scrollbar min-h-0 flex-1 overflow-auto rounded-md border border-border">
             {!selectedGroup ? <div className="p-4 text-sm text-muted-foreground">Select an item to view details.</div> : (
               <>
