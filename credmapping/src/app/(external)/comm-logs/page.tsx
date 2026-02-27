@@ -16,6 +16,7 @@ type ProviderWithStatus = {
   privilegeTier: string | null;
   latestStatus: string | null;
   nextFollowupAt: Date | null;
+  lastUpdatedAt: Date | null;
   hasMissingDocs?: boolean;
   hasPSV?: boolean;
 };
@@ -27,7 +28,24 @@ type FacilityWithStatus = {
   status: string | null;
   latestStatus: string | null;
   nextFollowupAt: Date | null;
+  lastUpdatedAt: Date | null;
   hasMissingDocs: boolean;
+};
+
+
+
+type SortOption = "alpha-asc" | "alpha-desc" | "updated-asc" | "updated-desc";
+
+const formatLastUpdated = (value: Date | string | null | undefined) => {
+  if (!value) return "Last Updated: —";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Last Updated: —";
+
+  return `Last Updated: ${parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })}`;
 };
 
 const buildStatusDots = (options: {
@@ -57,6 +75,7 @@ export default function CommLogsPage() {
   const [selectedId, setSelectedId] = useState<string | undefined>(initialId);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [sort, setSort] = useState<SortOption>("alpha-asc");
 
   const normalizedFilter = useMemo(() => {
     if (filter === "PSV") return "psv";
@@ -88,43 +107,55 @@ export default function CommLogsPage() {
   );
   const isLoading = mode === "provider" ? providersLoading : facilitiesLoading;
 
-  const mappedItems = useMemo(
-    () =>
-      items
-        .map((item) => {
-        if (mode === "provider") {
-          const provider = item as ProviderWithStatus;
-          const fullName = [provider.lastName, provider.firstName]
-            .filter((value): value is string => Boolean(value?.trim()))
-            .join(", ");
+  const mappedItems = useMemo(() => {
+    const rows = items.map((item) => {
+      if (mode === "provider") {
+        const provider = item as ProviderWithStatus;
+        const fullName = [provider.lastName, provider.firstName]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join(", ");
 
-          return {
-            id: provider.id,
-            name: fullName,
-            subText: provider.email ?? undefined,
-            statusDots: buildStatusDots({
-              hasMissingDocs: provider.hasMissingDocs,
-              hasPSV: provider.hasPSV,
-              nextFollowupAt: provider.nextFollowupAt,
-              isComplete: true,
-            }),
-          };
-        }
-
-        const facility = item as FacilityWithStatus;
         return {
-          id: facility.id,
-          name: facility.name ?? "",
+          id: provider.id,
+          name: fullName,
+          subText: formatLastUpdated(provider.lastUpdatedAt),
+          lastUpdatedAt: provider.lastUpdatedAt,
           statusDots: buildStatusDots({
-            hasMissingDocs: facility.hasMissingDocs,
-            nextFollowupAt: facility.nextFollowupAt,
-            isComplete: !facility.hasMissingDocs,
+            hasMissingDocs: provider.hasMissingDocs,
+            hasPSV: provider.hasPSV,
+            nextFollowupAt: provider.nextFollowupAt,
+            isComplete: true,
           }),
         };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
-    [items, mode],
-  );
+      }
+
+      const facility = item as FacilityWithStatus;
+      return {
+        id: facility.id,
+        name: facility.name ?? "",
+        subText: formatLastUpdated(facility.lastUpdatedAt),
+        lastUpdatedAt: facility.lastUpdatedAt,
+        statusDots: buildStatusDots({
+          hasMissingDocs: facility.hasMissingDocs,
+          nextFollowupAt: facility.nextFollowupAt,
+          isComplete: !facility.hasMissingDocs,
+        }),
+      };
+    });
+
+    return rows.sort((a, b) => {
+      if (sort === "alpha-asc") {
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }
+      if (sort === "alpha-desc") {
+        return b.name.localeCompare(a.name, undefined, { sensitivity: "base" });
+      }
+
+      const aTime = a.lastUpdatedAt ? new Date(a.lastUpdatedAt).getTime() : 0;
+      const bTime = b.lastUpdatedAt ? new Date(b.lastUpdatedAt).getTime() : 0;
+      return sort === "updated-asc" ? aTime - bTime : bTime - aTime;
+    });
+  }, [items, mode, sort]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -147,6 +178,7 @@ export default function CommLogsPage() {
     setSelectedId(undefined);
     setFilter("All");
     setSearch("");
+    setSort("alpha-asc");
   };
 
   const selectedProvider =
@@ -168,6 +200,8 @@ export default function CommLogsPage() {
         onFilterChange={setFilter}
         search={search}
         onSearchChange={setSearch}
+        sort={sort}
+        onSortChange={setSort}
       />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden border-r border-border bg-card">

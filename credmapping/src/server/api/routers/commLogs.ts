@@ -22,6 +22,21 @@ const getEarliestFollowUp = (
   );
 };
 
+const getLatestActivityDate = (
+  ...values: Array<Date | string | null | undefined>
+): Date | null => {
+  let latest: Date | null = null;
+
+  for (const value of values) {
+    if (!value) continue;
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) continue;
+    if (!latest || parsed.getTime() > latest.getTime()) latest = parsed;
+  }
+
+  return latest;
+};
+
 export const commLogsRouter = createTRPCRouter({
    // listByProvider: Gets the activity feed for the right panel
   listByProvider: protectedProcedure
@@ -450,6 +465,8 @@ export const providersWithCommLogsRouter = createTRPCRouter({
             nextFollowUpUS: missingDocs.nextFollowUpUS,
             nextFollowUpIn: missingDocs.nextFollowUpIn,
             followUpStatus: missingDocs.followUpStatus,
+            createdAt: missingDocs.createdAt,
+            updatedAt: missingDocs.updatedAt,
           })
           .from(missingDocs)
           .where(eq(missingDocs.relatedType, "provider")),
@@ -458,6 +475,8 @@ export const providersWithCommLogsRouter = createTRPCRouter({
             providerId: pendingPSV.providerId,
             status: pendingPSV.status,
             nextFollowUp: pendingPSV.nextFollowUp,
+            createdAt: pendingPSV.createdAt,
+            updatedAt: pendingPSV.updatedAt,
           })
           .from(pendingPSV)
           .orderBy(desc(pendingPSV.updatedAt), desc(pendingPSV.createdAt)),
@@ -466,6 +485,7 @@ export const providersWithCommLogsRouter = createTRPCRouter({
             relatedId: commLogs.relatedId,
             subject: commLogs.subject,
             createdAt: commLogs.createdAt,
+            updatedAt: commLogs.updatedAt,
           })
           .from(commLogs)
           .where(eq(commLogs.relatedType, "provider"))
@@ -485,6 +505,7 @@ export const providersWithCommLogsRouter = createTRPCRouter({
       ]);
 
       const missingDocsByProvider = new Map<string, string | null>();
+      const latestMissingDocActivityByProvider = new Map<string, Date>();
       for (const row of missingDocRows) {
         if (!row.relatedId || row.followUpStatus !== "Not Completed") continue;
         const current = missingDocsByProvider.get(row.relatedId);
@@ -496,16 +517,32 @@ export const providersWithCommLogsRouter = createTRPCRouter({
         if (!current || (nextFollowUp && nextFollowUp < current)) {
           missingDocsByProvider.set(row.relatedId, nextFollowUp);
         }
+
+        const latestDocActivity = getLatestActivityDate(row.updatedAt, row.createdAt);
+        const existingLatestDocActivity = latestMissingDocActivityByProvider.get(row.relatedId);
+
+        if (
+          latestDocActivity &&
+          (!existingLatestDocActivity ||
+            latestDocActivity.getTime() > existingLatestDocActivity.getTime())
+        ) {
+          latestMissingDocActivityByProvider.set(row.relatedId, latestDocActivity);
+        }
       }
 
-      const psvByProvider = new Map<string, { status: string; nextFollowUp: string | null }>();
+      const psvByProvider = new Map<
+        string,
+        { status: string; nextFollowUp: string | null; latestActivity: Date | null }
+      >();
       for (const row of pendingPsvRows) {
         if (row.status === "Closed") continue;
+        const rowLatestActivity = getLatestActivityDate(row.updatedAt, row.createdAt);
         const existing = psvByProvider.get(row.providerId);
         if (!existing) {
           psvByProvider.set(row.providerId, {
             status: row.status,
             nextFollowUp: row.nextFollowUp,
+            latestActivity: rowLatestActivity,
           });
           continue;
         }
@@ -513,12 +550,30 @@ export const providersWithCommLogsRouter = createTRPCRouter({
         if (!existing.nextFollowUp || (row.nextFollowUp && row.nextFollowUp < existing.nextFollowUp)) {
           existing.nextFollowUp = row.nextFollowUp;
         }
+
+        if (
+          rowLatestActivity &&
+          (!existing.latestActivity || rowLatestActivity.getTime() > existing.latestActivity.getTime())
+        ) {
+          existing.latestActivity = rowLatestActivity;
+        }
       }
 
       const latestSubjectByProvider = new Map<string, string | null>();
+      const latestCommLogActivityByProvider = new Map<string, Date>();
       for (const row of providerLogRows) {
         if (!row.relatedId || latestSubjectByProvider.has(row.relatedId)) continue;
         latestSubjectByProvider.set(row.relatedId, row.subject);
+
+        const latestLogActivity = getLatestActivityDate(row.updatedAt, row.createdAt);
+        const existingLatestLogActivity = latestCommLogActivityByProvider.get(row.relatedId);
+        if (
+          latestLogActivity &&
+          (!existingLatestLogActivity ||
+            latestLogActivity.getTime() > existingLatestLogActivity.getTime())
+        ) {
+          latestCommLogActivityByProvider.set(row.relatedId, latestLogActivity);
+        }
       }
 
       const privilegeTierByProvider = new Map<string, string | null>();
@@ -546,6 +601,12 @@ export const providersWithCommLogsRouter = createTRPCRouter({
             ? `PSV: ${psv?.status ?? ""}`
             : latestSubjectByProvider.get(provider.id) ?? null;
 
+        const lastUpdatedAt = getLatestActivityDate(
+          latestCommLogActivityByProvider.get(provider.id),
+          psv?.latestActivity,
+          latestMissingDocActivityByProvider.get(provider.id),
+        );
+
         return {
           ...provider,
           hasMissingDocs,
@@ -553,6 +614,7 @@ export const providersWithCommLogsRouter = createTRPCRouter({
           privilegeTier: privilegeTierByProvider.get(provider.id) ?? null,
           latestStatus,
           nextFollowupAt,
+          lastUpdatedAt,
         };
       });
 
@@ -582,7 +644,7 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const [facilityRows, missingDocRows] = await Promise.all([
+      const [facilityRows, missingDocRows, facilityLogRows] = await Promise.all([
         ctx.db
           .select({
             id: facilities.id,
@@ -597,12 +659,24 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
             nextFollowUpUS: missingDocs.nextFollowUpUS,
             nextFollowUpIn: missingDocs.nextFollowUpIn,
             followUpStatus: missingDocs.followUpStatus,
+            createdAt: missingDocs.createdAt,
+            updatedAt: missingDocs.updatedAt,
           })
           .from(missingDocs)
           .where(eq(missingDocs.relatedType, "facility")),
+        ctx.db
+          .select({
+            relatedId: commLogs.relatedId,
+            createdAt: commLogs.createdAt,
+            updatedAt: commLogs.updatedAt,
+          })
+          .from(commLogs)
+          .where(eq(commLogs.relatedType, "facility"))
+          .orderBy(desc(commLogs.createdAt)),
       ]);
 
       const missingDocsByFacility = new Map<string, string | null>();
+      const latestMissingDocActivityByFacility = new Map<string, Date>();
       for (const row of missingDocRows) {
         if (!row.relatedId || row.followUpStatus !== "Not Completed") continue;
         const current = missingDocsByFacility.get(row.relatedId);
@@ -614,6 +688,30 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
         if (!current || (nextFollowUp && nextFollowUp < current)) {
           missingDocsByFacility.set(row.relatedId, nextFollowUp);
         }
+
+        const latestDocActivity = getLatestActivityDate(row.updatedAt, row.createdAt);
+        const existingLatestDocActivity = latestMissingDocActivityByFacility.get(row.relatedId);
+        if (
+          latestDocActivity &&
+          (!existingLatestDocActivity ||
+            latestDocActivity.getTime() > existingLatestDocActivity.getTime())
+        ) {
+          latestMissingDocActivityByFacility.set(row.relatedId, latestDocActivity);
+        }
+      }
+
+      const latestCommLogActivityByFacility = new Map<string, Date>();
+      for (const row of facilityLogRows) {
+        if (!row.relatedId) continue;
+        const latestLogActivity = getLatestActivityDate(row.updatedAt, row.createdAt);
+        const existingLatestLogActivity = latestCommLogActivityByFacility.get(row.relatedId);
+        if (
+          latestLogActivity &&
+          (!existingLatestLogActivity ||
+            latestLogActivity.getTime() > existingLatestLogActivity.getTime())
+        ) {
+          latestCommLogActivityByFacility.set(row.relatedId, latestLogActivity);
+        }
       }
 
       let filteredRows = facilityRows.map((facility) => {
@@ -624,6 +722,10 @@ export const facilitiesWithCommLogsRouter = createTRPCRouter({
           hasMissingDocs,
           latestStatus: hasMissingDocs ? "Missing Docs" : "General",
           nextFollowupAt: missingDocsByFacility.get(facility.id) ?? null,
+          lastUpdatedAt: getLatestActivityDate(
+            latestCommLogActivityByFacility.get(facility.id),
+            latestMissingDocActivityByFacility.get(facility.id),
+          ),
         };
       });
 

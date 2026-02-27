@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { ArrowUpDown, SlidersHorizontal } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -9,14 +10,23 @@ import {
 import { TruncatedTooltip } from "~/components/ui/truncated-tooltip";
 import { Input } from "~/components/ui/input";
 import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "~/components/ui/sheet";
+import { Button } from "~/components/ui/button";
 
 type StatusDotTone = "red" | "blue" | "amber" | "green";
+type SortOption = "alpha-asc" | "alpha-desc" | "updated-asc" | "updated-desc";
 
 interface ListItem {
   id: string;
   name: string;
   subText?: string;
-  rightMeta?: string;
   statusDots?: StatusDotTone[];
 }
 
@@ -31,6 +41,8 @@ interface LeftPanelProps {
   onFilterChange?: (filter: string) => void;
   search?: string;
   onSearchChange?: (search: string) => void;
+  sort?: SortOption;
+  onSortChange?: (sort: SortOption) => void;
 }
 
 const providerFilters = ["All", "PSV", "Missing"];
@@ -47,6 +59,8 @@ export function LeftPanel({
   onFilterChange,
   search = "",
   onSearchChange,
+  sort = "alpha-asc",
+  onSortChange,
 }: LeftPanelProps) {
   const filters = mode === "provider" ? providerFilters : facilityFilters;
 
@@ -108,27 +122,62 @@ export function LeftPanel({
           onChange={(e) => onSearchChange?.(e.target.value)}
           className="h-9 w-full"
         />
-      </div>
 
-      <div className="border-b border-border px-4 py-3">
-        <div
-          className="grid w-full overflow-hidden rounded-md border border-border bg-secondary/40"
-          style={{ gridTemplateColumns: `repeat(${filters.length}, minmax(0, 1fr))` }}
-        >
-          {filters.map((f, index) => (
-            <button
-              key={f}
-              onClick={() => onFilterChange?.(f)}
-              className={`px-3 py-2 text-center text-xs font-medium transition-colors ${
-                filter === f
-                  ? "bg-primary text-primary-foreground"
-                  : "text-secondary-foreground hover:bg-accent"
-              } ${index > 0 ? "border-l border-border" : ""}`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="mt-3 h-9 w-full">
+              <SlidersHorizontal className="size-4" /> Filters and Sort
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="gap-0">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <ArrowUpDown className="size-4" /> Filters and Sort
+              </SheetTitle>
+            </SheetHeader>
+            <div className="border-border space-y-4 border-t px-4 py-3">
+              <div className="space-y-1">
+                <label className="text-xs text-zinc-500">Filter</label>
+                <select
+                  value={filter}
+                  onChange={(event) => onFilterChange?.(event.target.value)}
+                  className="w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-zinc-300"
+                >
+                  {filters.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-zinc-500">Sort Order</label>
+                <select
+                  value={sort}
+                  onChange={(event) => onSortChange?.(event.target.value as SortOption)}
+                  className="w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-sm text-zinc-300"
+                >
+                  <option value="alpha-asc">Alphabetical (A → Z)</option>
+                  <option value="alpha-desc">Alphabetical (Z → A)</option>
+                  <option value="updated-asc">Last Updated (Oldest First)</option>
+                  <option value="updated-desc">Last Updated (Newest First)</option>
+                </select>
+              </div>
+            </div>
+            <SheetFooter className="px-4 py-4">
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  onFilterChange?.("All");
+                  onSortChange?.("alpha-asc");
+                }}
+              >
+                Reset filters
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
       </div>
 
       <ScrollIndicatorContainer className="flex-1">
