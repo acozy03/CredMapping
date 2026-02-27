@@ -207,16 +207,16 @@ export function AuditLogClient() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-yellow-400" />
+          <div className="w-2 h-2 rounded-full bg-yellow-500 dark:bg-yellow-400" />
           <span className="text-xs text-muted-foreground">Updates:</span>
-          <span className="text-sm font-semibold text-yellow-400">
+          <span className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
             {updateCount}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-400" />
+          <div className="w-2 h-2 rounded-full bg-green-500 dark:bg-green-400" />
           <span className="text-xs text-muted-foreground">Inserts:</span>
-          <span className="text-sm font-semibold text-green-400">
+          <span className="text-sm font-semibold text-green-600 dark:text-green-400">
             {insertCount}
           </span>
         </div>
