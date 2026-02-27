@@ -16,7 +16,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "~/components/ui/sheet";
-import { Badge } from "~/components/ui/badge";
 import { api } from "~/trpc/react";
 
 interface FacilityDetailProps {
@@ -77,7 +76,14 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
   }, [logs]);
 
   const commTypeOptions = useMemo(() => {
-    const defaults = ["Email", "Phone Call", "Dropbox", "Document", "Modio", "Meeting"];
+    const defaults = [
+      "Email",
+      "Phone Call",
+      "Dropbox",
+      "Document",
+      "Modio",
+      "Meeting",
+    ];
     const fromLogs = (logs ?? [])
       .map((log) => log.commType)
       .filter((type): type is string => Boolean(type));
@@ -130,53 +136,51 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                 <h2 className="truncate text-2xl font-bold text-white">
                   {facility.name}
                 </h2>
-                <Badge
-                  variant="outline"
-                  className="bg-secondary/50 text-secondary-foreground font-mono uppercase"
-                >
-                  {facility.state ?? "N/A"}
-                </Badge>
               </div>
               <p className="text-sm text-zinc-400">
                 {facility.email ?? "No facility email listed"}
               </p>
             </div>
           </div>
-          <Badge
-            className={
-              facility.status === "Active"
-                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                : "border-amber-500/20 bg-amber-500/10 text-amber-400"
-            }
-          >
-            {facility.status ?? "Unknown"}
-          </Badge>
+          <span className="border-border bg-secondary text-secondary-foreground rounded border px-2 py-1 text-xs font-medium uppercase">
+            {facility.state ?? "N/A"}
+          </span>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 text-sm">
-          <div>
-            <p className="mb-1 text-zinc-400">Missing Docs</p>
-            <p
-              className={`font-medium ${summary?.activeRoadblocks ? "text-rose-400" : "text-white"}`}
-            >
-              {summary?.activeRoadblocks ?? 0}
-            </p>
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <div className="min-w-[11rem] flex-1 basis-0">
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-zinc-400">Missing Docs:</p>
+              <p
+                className={`font-medium ${summary?.activeRoadblocks ? "text-rose-400" : "text-white"}`}
+              >
+                {summary?.activeRoadblocks ?? 0}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="mb-1 text-zinc-400">Total Logs</p>
-            <p className="font-medium text-white">{summary?.totalLogs ?? 0}</p>
+          <div className="min-w-[11rem] flex-1 basis-0">
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-zinc-400">Total Activity:</p>
+              <p className="font-medium text-white">
+                {summary?.totalLogs ?? 0} Logs
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="mb-1 text-zinc-400">Proxy Entity</p>
-            <p className="truncate font-medium text-white">
-              {contactData?.facilityInfo?.proxy ?? "—"}
-            </p>
+          <div className="min-w-[11rem] flex-1 basis-0">
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-zinc-400">Proxy Entity:</p>
+              <p className="truncate font-medium text-white">
+                {contactData?.facilityInfo?.proxy ?? "—"}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="mb-1 text-zinc-400">Status</p>
-            <p className="font-medium text-white">
-              {facility.status ?? "Unknown"}
-            </p>
+          <div className="min-w-[11rem] flex-1 basis-0">
+            <div className="flex items-baseline gap-1.5">
+              <p className="text-zinc-400">Status:</p>
+              <p className="font-medium text-white">
+                {facility.status ?? "Unknown"}
+              </p>
+            </div>
           </div>
         </div>
       </div>
