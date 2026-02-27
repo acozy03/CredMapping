@@ -203,14 +203,10 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
         ))}
       </div>
 
-      <div
-        className={`min-h-0 flex-1 overflow-y-auto ${
-          activeTab === "logs" || activeTab === "missing-docs" ? "" : "p-6"
-        }`}
-      >
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === "logs" && (
-          <div>
-            <div className="border-border bg-card sticky top-0 z-10 border-b px-6 py-4">
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="border-border bg-card border-b px-6 py-4">
               <div className="flex items-center gap-2">
                 <Input
                   value={searchQuery}
@@ -311,7 +307,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                 )}
               </div>
             </div>
-            <div className="px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
               <CommLogFeed
                 logs={filteredLogs}
                 isLoading={logsLoading}
@@ -335,43 +331,45 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
         )}
 
         {activeTab === "contacts" && (
-          <div className="space-y-6">
-            {contactData?.contacts?.length ? (
-              <div className="grid grid-cols-2 gap-4">
-                {contactData.contacts.map((contact) => (
-                  <div
-                    key={contact.id}
-                    className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4"
-                  >
-                    <p className="mb-2 text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
-                      {contact.isPrimary
-                        ? "Primary Contact"
-                        : (contact.title ?? "Facility Contact")}
-                    </p>
-                    <p className="text-lg font-medium text-white">
-                      {contact.name}
-                    </p>
-                    {contact.email && (
-                      <p className="text-primary text-sm">{contact.email}</p>
-                    )}
-                    {contact.phone && (
-                      <p className="mt-1 text-sm text-zinc-400">
-                        {contact.phone}
+          <div className="h-full overflow-y-auto p-6">
+            <div className="space-y-6">
+              {contactData?.contacts?.length ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {contactData.contacts.map((contact) => (
+                    <div
+                      key={contact.id}
+                      className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4"
+                    >
+                      <p className="mb-2 text-[10px] font-bold tracking-widest text-zinc-500 uppercase">
+                        {contact.isPrimary
+                          ? "Primary Contact"
+                          : (contact.title ?? "Facility Contact")}
                       </p>
-                    )}
-                  </div>
-                ))}
+                      <p className="text-lg font-medium text-white">
+                        {contact.name}
+                      </p>
+                      {contact.email && (
+                        <p className="text-primary text-sm">{contact.email}</p>
+                      )}
+                      {contact.phone && (
+                        <p className="mt-1 text-sm text-zinc-400">
+                          {contact.phone}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <StandardEmptyState message="No facility contacts recorded yet." />
+              )}
+              <div className="bg-muted/10 rounded-lg border border-zinc-700 p-6">
+                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold tracking-widest text-zinc-500 uppercase">
+                  <Info className="h-4 w-4" /> Physical Address
+                </h4>
+                <p className="leading-relaxed text-zinc-200">
+                  {contactData?.facilityInfo?.address ?? "No address recorded"}
+                </p>
               </div>
-            ) : (
-              <StandardEmptyState message="No facility contacts recorded yet." />
-            )}
-            <div className="bg-muted/10 rounded-lg border border-zinc-700 p-6">
-              <h4 className="mb-3 flex items-center gap-2 text-xs font-bold tracking-widest text-zinc-500 uppercase">
-                <Info className="h-4 w-4" /> Physical Address
-              </h4>
-              <p className="leading-relaxed text-zinc-200">
-                {contactData?.facilityInfo?.address ?? "No address recorded"}
-              </p>
             </div>
           </div>
         )}

@@ -185,7 +185,7 @@ export function PendingPsvManager({
   };
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="border-border bg-card sticky top-0 z-10 border-b px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -279,7 +279,7 @@ export function PendingPsvManager({
         </div>
       </div>
 
-      <div className="space-y-4 px-6 py-4">
+      <div className="flex min-h-0 flex-1 flex-col space-y-4 px-6 py-4">
         {isCreating && (
           <div className="mb-4 grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900/40 p-4 md:grid-cols-3">
             <div className="space-y-1">
@@ -393,20 +393,28 @@ export function PendingPsvManager({
             ))}
           </div>
         ) : filteredPsvs.length > 0 ? (
-          <div className="bg-card overflow-hidden rounded-lg border border-zinc-700">
-            <table className="w-full text-sm">
+          <div className="bg-card min-h-0 flex-1 overflow-auto rounded-lg border border-zinc-700">
+            <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="bg-muted/50 border-b border-zinc-700 text-zinc-400">
-                  <th className="px-4 py-3 text-left font-medium">
+                  <th className="bg-muted/95 sticky top-0 z-10 px-4 py-3 text-left font-medium backdrop-blur">
                     Verification Type
                   </th>
-                  <th className="px-4 py-3 text-left font-medium">Target</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-left font-medium">
+                  <th className="bg-muted/95 sticky top-0 z-10 px-4 py-3 text-left font-medium backdrop-blur">
+                    Target
+                  </th>
+                  <th className="bg-muted/95 sticky top-0 z-10 px-4 py-3 text-left font-medium backdrop-blur">
+                    Status
+                  </th>
+                  <th className="bg-muted/95 sticky top-0 z-10 px-4 py-3 text-left font-medium backdrop-blur">
                     Date Requested
                   </th>
-                  <th className="px-4 py-3 text-left font-medium">Notes</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  <th className="bg-muted/95 sticky top-0 z-10 px-4 py-3 text-left font-medium backdrop-blur">
+                    Notes
+                  </th>
+                  <th className="bg-muted/95 sticky top-0 z-10 px-4 py-3 text-right font-medium backdrop-blur">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">

@@ -197,10 +197,10 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
       </div>
 
       {/* Content Area */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === "logs" && (
-          <div>
-            <div className="border-border bg-card sticky top-0 z-10 border-b px-6 py-4">
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="border-border bg-card border-b px-6 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   value={searchQuery}
@@ -305,7 +305,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
               </div>
             </div>
 
-            <div className="px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
               <CommLogFeed
                 logs={filteredLogs.map((log) => ({
                   id: log.id,
