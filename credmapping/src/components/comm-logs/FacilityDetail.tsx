@@ -24,6 +24,7 @@ import {
 } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
 import { api } from "~/trpc/react";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 
 interface FacilityDetailProps {
   facilityId: string;
@@ -368,7 +369,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                 )}
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            <ScrollIndicatorContainer className="min-h-0 flex-1" viewportClassName="px-6 py-4">
               <CommLogFeed
                 logs={filteredLogs}
                 isLoading={logsLoading}
@@ -377,7 +378,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                   setIsModalOpen(true);
                 }}
               />
-            </div>
+            </ScrollIndicatorContainer>
           </div>
         )}
 
@@ -392,7 +393,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
         )}
 
         {activeTab === "contacts" && (
-          <div className="h-full overflow-y-auto p-6">
+          <ScrollIndicatorContainer className="h-full" viewportClassName="p-6">
             <div className="space-y-6">
               {contactData?.contacts?.length ? (
                 <div className="grid grid-cols-2 gap-4">
@@ -432,7 +433,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                 </p>
               </div>
             </div>
-          </div>
+          </ScrollIndicatorContainer>
         )}
       </div>
 

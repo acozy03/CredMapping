@@ -8,6 +8,7 @@ import {
 } from "~/components/ui/tooltip";
 import { TruncatedTooltip } from "~/components/ui/truncated-tooltip";
 import { Input } from "~/components/ui/input";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 
 type StatusDotTone = "red" | "blue" | "amber" | "green";
 
@@ -130,7 +131,7 @@ export function LeftPanel({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <ScrollIndicatorContainer className="flex-1">
         {isLoading ? (
           <div className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -142,12 +143,12 @@ export function LeftPanel({
             No {mode === "facility" ? "facilities" : "providers"} found
           </div>
         ) : (
-          <div className="p-2">
+          <div className="space-y-2 px-4 py-3">
             {filteredItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => onSelectItem(item.id)}
-                className={`mb-2 w-full rounded-lg border p-2.5 text-left transition-colors ${
+                className={`w-full rounded-lg border p-2.5 text-left transition-colors ${
                   selectedItemId === item.id
                     ? "border-primary/40 bg-primary/10"
                     : "border-border hover:bg-accent/60"
@@ -181,7 +182,7 @@ export function LeftPanel({
             ))}
           </div>
         )}
-      </div>
+      </ScrollIndicatorContainer>
     </div>
   );
 }

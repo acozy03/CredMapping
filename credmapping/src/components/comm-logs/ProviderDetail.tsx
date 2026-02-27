@@ -24,6 +24,7 @@ import { Textarea } from "~/components/ui/textarea";
 import { MissingDocsManager } from "./MissingDocsManager";
 import { PendingPsvManager } from "./PendingPsvManager";
 import { api } from "~/trpc/react";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 
 interface ProviderDetailProps {
   providerId: string;
@@ -381,7 +382,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            <ScrollIndicatorContainer className="min-h-0 flex-1" viewportClassName="px-6 py-4">
               <CommLogFeed
                 logs={filteredLogs.map((log) => ({
                   id: log.id,
@@ -398,7 +399,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
                   setIsModalOpen(true);
                 }}
               />
-            </div>
+            </ScrollIndicatorContainer>
           </div>
         )}
 

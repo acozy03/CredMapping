@@ -17,6 +17,7 @@ import {
   SheetTrigger,
 } from "~/components/ui/sheet";
 import { api } from "~/trpc/react";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 
 type MissingDocStatus = "Completed" | "Pending Response" | "Not Completed";
 
@@ -286,7 +287,7 @@ export function MissingDocsManager({
           <div className="h-12 w-full animate-pulse rounded bg-zinc-800" />
         ) : filteredDocs.length > 0 ? (
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-700">
-            <div className="overflow-x-auto border-b border-zinc-700">
+            <div className="hide-scrollbar overflow-x-auto border-b border-zinc-700">
               <table className="w-full min-w-[980px] table-fixed text-sm">
                 <colgroup>
                   <col className="w-[19%]" />
@@ -316,7 +317,7 @@ export function MissingDocsManager({
                 </thead>
               </table>
             </div>
-            <div className="min-h-0 h-full overflow-auto">
+            <ScrollIndicatorContainer className="min-h-0 h-full" viewportClassName="hide-scrollbar overflow-auto">
               <table className="w-full min-w-[980px] table-fixed text-sm">
                 <colgroup>
                   <col className="w-[19%]" />
@@ -438,7 +439,7 @@ export function MissingDocsManager({
                 )}
                 </tbody>
               </table>
-            </div>
+            </ScrollIndicatorContainer>
           </div>
         ) : (
           <StandardEmptyState message="No matching missing documentation found." />

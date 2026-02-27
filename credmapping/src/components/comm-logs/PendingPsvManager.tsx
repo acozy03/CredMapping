@@ -17,6 +17,7 @@ import {
   SheetTrigger,
 } from "~/components/ui/sheet";
 import { api } from "~/trpc/react";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 
 type PendingPsv = {
   id: string;
@@ -395,7 +396,7 @@ export function PendingPsvManager({
           </div>
         ) : filteredPsvs.length > 0 ? (
           <div className="bg-card min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-700">
-            <div className="overflow-x-auto border-b border-zinc-700">
+            <div className="hide-scrollbar overflow-x-auto border-b border-zinc-700">
               <table className="w-full min-w-[920px] table-fixed text-sm">
                 <colgroup>
                   <col className="w-[18%]" />
@@ -421,7 +422,7 @@ export function PendingPsvManager({
                 </thead>
               </table>
             </div>
-            <div className="min-h-0 h-full overflow-auto">
+            <ScrollIndicatorContainer className="min-h-0 h-full" viewportClassName="hide-scrollbar overflow-auto">
               <table className="w-full min-w-[920px] table-fixed text-sm">
                 <colgroup>
                   <col className="w-[18%]" />
@@ -558,7 +559,7 @@ export function PendingPsvManager({
                 )}
                 </tbody>
               </table>
-            </div>
+            </ScrollIndicatorContainer>
           </div>
         ) : (
           <StandardEmptyState message="No matching PSV records found." />
