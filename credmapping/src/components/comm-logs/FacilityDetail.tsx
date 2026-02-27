@@ -244,26 +244,37 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
         </div>
       </div>
 
-      <div className="border-border bg-card flex gap-4 border-b px-6">
+      <div className="border-border bg-card grid grid-cols-3 gap-3 border-b px-6 py-3">
         {[
           { id: "logs", label: "Logs" },
           { id: "missing-docs", label: "Missing Docs" },
           { id: "contacts", label: "Contact Info & Notes" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() =>
-              setActiveTab(tab.id as "logs" | "missing-docs" | "contacts")
-            }
-            className={`border-b-2 px-4 py-4 text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? "border-primary text-white"
-                : "border-transparent text-zinc-400 hover:text-white"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        ].map((tab) => {
+          const shapeClass =
+            tab.id === "logs"
+              ? "rounded-tl-md rounded-br-sm"
+              : tab.id === "missing-docs"
+                ? "rounded-t-md"
+                : "rounded-tr-md rounded-bl-sm";
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() =>
+                setActiveTab(tab.id as "logs" | "missing-docs" | "contacts")
+              }
+              className={`border-border bg-muted/20 hover:bg-muted/30 w-full border px-4 py-2.5 text-center text-sm font-medium transition-colors ${shapeClass} ${
+                activeTab === tab.id
+                  ? "border-primary text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+           
+                {tab.label}
+          
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
