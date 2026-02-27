@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { CommLogFeed } from "./CommLogFeed";
-import { NewLogModal } from "./NewLogModal";
 import { Button } from "~/components/ui/button";
+import { Dialog, DialogClose } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
+import {
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "~/components/ui/app-modal";
 import {
   Sheet,
   SheetContent,
@@ -14,6 +20,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "~/components/ui/sheet";
+import { Textarea } from "~/components/ui/textarea";
 import { MissingDocsManager } from "./MissingDocsManager";
 import { PendingPsvManager } from "./PendingPsvManager";
 import { api } from "~/trpc/react";
@@ -30,6 +37,12 @@ interface ProviderDetailProps {
   };
 }
 
+const DEFAULT_FORM_DATA = {
+  commType: "Email",
+  subject: "",
+  notes: "",
+};
+
 export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
   const utils = api.useUtils();
   const [activeTab, setActiveTab] = useState<"logs" | "missing-docs" | "psv">(
@@ -42,6 +55,7 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
     subject: string | null;
     notes: string | null;
   } | null>(null);
+  const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
 
   const [selectedCommType, setSelectedCommType] = useState<string>("all");
   const [selectedAgent, setSelectedAgent] = useState<string>("all");
@@ -65,6 +79,9 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
     });
   const { data: pendingPSVs, isLoading: psvLoading } =
     api.commLogs.getPendingPSVs.useQuery({ providerId });
+  const createMutation = api.commLogs.create.useMutation();
+  const updateMutation = api.commLogs.update.useMutation();
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   const uniqueAgents = useMemo(() => {
     if (!logs) return [];
@@ -133,6 +150,47 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
       utils.commLogs.getPendingPSVs.invalidate({ providerId }),
       utils.providersWithCommLogs.listWithCommLogStatus.invalidate(),
     ]);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingLog(null);
+    setFormData(DEFAULT_FORM_DATA);
+  };
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    if (editingLog) {
+      setFormData({
+        commType: editingLog.commType ?? "Email",
+        subject: editingLog.subject ?? "",
+        notes: editingLog.notes ?? "",
+      });
+      return;
+    }
+
+    setFormData(DEFAULT_FORM_DATA);
+  }, [editingLog, isModalOpen]);
+
+  const handleSubmitLog = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (editingLog) {
+      await updateMutation.mutateAsync({
+        id: editingLog.id,
+        ...formData,
+      });
+    } else {
+      await createMutation.mutateAsync({
+        relatedId: providerId,
+        relatedType: "provider",
+        ...formData,
+      });
+    }
+
+    await handleLogCreated();
+    handleCloseModal();
   };
 
   return (
@@ -364,17 +422,83 @@ export function ProviderDetail({ providerId, provider }: ProviderDetailProps) {
         )}
       </div>
 
-      <NewLogModal
-        isOpen={isModalOpen}
-        editingLog={editingLog}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingLog(null);
-        }}
-        relatedId={providerId}
-        relatedType="provider"
-        onLogCreated={handleLogCreated}
-      />
+      <Dialog open={isModalOpen} onOpenChange={(open) => !open && handleCloseModal()}>
+        <ModalContent>
+          <ModalHeader>
+            <ModalTitle className="text-xl font-bold">
+              {editingLog ? "Edit Interaction Entry" : "Log New Interaction"}
+            </ModalTitle>
+          </ModalHeader>
+
+          <form className="space-y-4" onSubmit={handleSubmitLog}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Method
+                </label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  onChange={(event) =>
+                    setFormData({ ...formData, commType: event.target.value })
+                  }
+                  value={formData.commType}
+                >
+                  <option>Email</option>
+                  <option>Phone Call</option>
+                  <option>Dropbox</option>
+                  <option>Document</option>
+                  <option>Modio</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Subject
+                </label>
+                <Input
+                  onChange={(event) =>
+                    setFormData({ ...formData, subject: event.target.value })
+                  }
+                  placeholder="e.g., PSV Follow-up"
+                  required
+                  value={formData.subject}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Conversation Notes
+              </label>
+              <Textarea
+                className="resize-none"
+                onChange={(event) =>
+                  setFormData({ ...formData, notes: event.target.value })
+                }
+                placeholder="What was discussed or what happened?"
+                required
+                rows={6}
+                value={formData.notes}
+              />
+            </div>
+
+            <ModalFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button className="min-w-25" disabled={isSubmitting} type="submit">
+                {isSubmitting
+                  ? "Saving..."
+                  : editingLog
+                    ? "Save Changes"
+                    : "Post Entry"}
+              </Button>
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </Dialog>
     </div>
   );
 }
