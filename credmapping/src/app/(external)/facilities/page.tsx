@@ -1,11 +1,10 @@
-import { and, count, desc, eq, ilike, inArray, not, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, not, or } from "drizzle-orm";
 import { Mail, Phone } from "lucide-react";
 import Link from "next/link";
-import { AddFacilityDialog } from "~/components/facilities/add-facility-dialog";
-import { MetricsTrendChart } from "~/components/metrics-trend-chart";
+import { FacilitiesPendingProvider, FacilitiesListOverlay } from "~/app/(external)/facilities/facilities-pending-context";
+import { FacilitiesTopSection } from "~/app/(external)/facilities/facilities-top-section";
 import { ProvidersAutoAdvance } from "~/components/providers-auto-advance";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 import { getAppRole } from "~/server/auth/domain";
 import { db } from "~/server/db";
@@ -148,20 +147,24 @@ export default async function FacilitiesPage(props: {
               : "In Progress",
         );
 
+  const hasContactMatches = contactsFilter !== "with" || facilitiesWithContacts.length > 0;
+
   const contactsWhere =
     contactsFilter === "all"
       ? undefined
       : contactsFilter === "with"
         ? facilitiesWithContacts.length > 0
           ? inArray(facilities.id, facilitiesWithContacts)
-          : sql`1 = 0`
+          : undefined
         : facilitiesWithContacts.length > 0
           ? not(inArray(facilities.id, facilitiesWithContacts))
           : undefined;
 
   const whereClause = and(searchWhere, activityWhere, contactsWhere);
 
-  const totalVisibleRow = await db.select({ count: count() }).from(facilities).where(whereClause);
+  const totalVisibleRow = hasContactMatches
+    ? await db.select({ count: count() }).from(facilities).where(whereClause)
+    : [{ count: 0 }];
 
   const orderByClause =
     sort === "name_desc"
@@ -174,12 +177,14 @@ export default async function FacilitiesPage(props: {
 
   const visibleLimit = Math.min(requestedLimit, totalVisibleRow[0]?.count ?? 0);
 
-  const facilityRows = await db
-    .select()
-    .from(facilities)
-    .where(whereClause)
-    .orderBy(...orderByClause)
-    .limit(visibleLimit);
+  const facilityRows = hasContactMatches
+    ? await db
+        .select()
+        .from(facilities)
+        .where(whereClause)
+        .orderBy(...orderByClause)
+        .limit(visibleLimit)
+    : [];
 
   const facilityIds = facilityRows.map((row) => row.id);
 
@@ -286,85 +291,28 @@ export default async function FacilitiesPage(props: {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
-      <MetricsTrendChart
-        labels={{
-          primary: "New facilities",
-          secondary: "New PFC links",
-          tertiary: "Related incidents",
-        }}
-        points={facilityTrendPoints}
-        title="Facility onboarding velocity"
-      />
+    <FacilitiesPendingProvider>
+      <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+        <FacilitiesTopSection
+          activityFilter={activityFilter}
+          contactsFilter={contactsFilter}
+          isSuperAdmin={isSuperAdmin}
+          search={search}
+          sort={sort}
+          trendPoints={facilityTrendPoints}
+        />
 
-      <form className="bg-card flex flex-col gap-3 rounded-lg border p-4 lg:flex-row lg:items-end" method="get">
-        <div className="grid flex-1 gap-3 md:grid-cols-4">
-          <label className="space-y-1">
-            <span className="text-muted-foreground text-xs uppercase">Sort facilities</span>
-            <select className="bg-background h-9 w-full rounded-md border px-3 text-sm" defaultValue={sort} name="sort">
-              <option value="name_asc">Facility name (A → Z)</option>
-              <option value="name_desc">Facility name (Z → A)</option>
-              <option value="updated_desc">Updated (newest first)</option>
-              <option value="updated_asc">Updated (oldest first)</option>
-            </select>
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-muted-foreground text-xs uppercase">Activity</span>
-            <select className="bg-background h-9 w-full rounded-md border px-3 text-sm" defaultValue={activityFilter} name="activity">
-              <option value="all">All facilities</option>
-              <option value="active">Active only</option>
-              <option value="inactive">Inactive only</option>
-              <option value="in_progress">In progress only</option>
-            </select>
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-muted-foreground text-xs uppercase">Contact coverage</span>
-            <select
-              className="bg-background h-9 w-full rounded-md border px-3 text-sm"
-              defaultValue={contactsFilter}
-              name="contacts"
+        <FacilitiesListOverlay>
+          {facilityCards.length === 0 ? (
+            <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-sm">
+              No facilities found.
+            </div>
+          ) : (
+            <VirtualScrollContainer
+              className="min-h-0 flex-1"
+              heightClassName="h-full"
+              viewportClassName="facilities-scroll-viewport"
             >
-              <option value="all">All facilities</option>
-              <option value="with">With contacts</option>
-              <option value="without">Without contacts</option>
-            </select>
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-muted-foreground text-xs uppercase">Search facilities</span>
-            <input
-              className="bg-background h-9 w-full rounded-md border px-3 text-sm"
-              defaultValue={search}
-              name="search"
-              placeholder="Search by name, state, email, address"
-              type="search"
-            />
-          </label>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="outline">
-            Apply
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/facilities">Reset</Link>
-          </Button>
-          {isSuperAdmin ? <AddFacilityDialog /> : null}
-        </div>
-      </form>
-
-      {facilityCards.length === 0 ? (
-        <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-sm">
-          No facilities found.
-        </div>
-      ) : (
-        <VirtualScrollContainer
-          className="min-h-0 flex-1"
-          heightClassName="h-full"
-          viewportClassName="facilities-scroll-viewport"
-        >
           <div className="space-y-4 p-4">
             {facilityCards.map((card) => {
               const { facility, contacts, credentials, primaryContact, workflowCount } = card;
@@ -577,7 +525,9 @@ export default async function FacilitiesPage(props: {
             </div>
           </div>
         </VirtualScrollContainer>
-      )}
-    </div>
+          )}
+        </FacilitiesListOverlay>
+      </div>
+    </FacilitiesPendingProvider>
   );
 }

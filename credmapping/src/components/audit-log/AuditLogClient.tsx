@@ -246,7 +246,44 @@ export function AuditLogClient() {
         isLoading={isLoading}
       />
 
-      {/* Entries Table */} 
+      {/* Stats Bar */}
+      <div className="flex flex-wrap gap-6 px-4 py-2 rounded border border-border bg-card">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Total entries:</span>
+          <span className="text-sm font-semibold text-foreground">
+            {totalCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-yellow-500 dark:bg-yellow-400" />
+          <span className="text-xs text-muted-foreground">Updates:</span>
+          <span className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
+            {updateCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-green-500 dark:bg-green-400" />
+          <span className="text-xs text-muted-foreground">Inserts:</span>
+          <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+            {insertCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-destructive" />
+          <span className="text-xs text-muted-foreground">Deletes:</span>
+          <span className="text-sm font-semibold text-destructive">
+            {deleteCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Unique users:</span>
+          <span className="text-sm font-semibold text-foreground">
+            {uniqueUsers}
+          </span>
+        </div>
+      </div>
+
+      {/* Entries Table */}
       <Card className="overflow-hidden">
         {isLoading ? (
           <div className="space-y-0">
