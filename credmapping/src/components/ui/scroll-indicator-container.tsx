@@ -32,12 +32,26 @@ export function ScrollIndicatorContainer({
     updateIndicators();
     viewport.addEventListener("scroll", updateIndicators, { passive: true });
 
-    const observer = new ResizeObserver(updateIndicators);
-    observer.observe(viewport);
+    const resizeObserver = new ResizeObserver(updateIndicators);
+    resizeObserver.observe(viewport);
+
+    const contentRoot = viewport.firstElementChild;
+    if (contentRoot instanceof HTMLElement) {
+      resizeObserver.observe(contentRoot);
+    }
+
+    const mutationObserver = new MutationObserver(updateIndicators);
+    mutationObserver.observe(viewport, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
 
     return () => {
       viewport.removeEventListener("scroll", updateIndicators);
-      observer.disconnect();
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
     };
   }, []);
 
@@ -45,7 +59,10 @@ export function ScrollIndicatorContainer({
     <div className={cn("relative min-h-0", className)}>
       <div
         ref={viewportRef}
-        className={cn("hide-scrollbar min-h-0 h-full overflow-y-auto", viewportClassName)}
+        className={cn(
+          "hide-scrollbar min-h-0 h-full overflow-y-auto",
+          viewportClassName,
+        )}
       >
         {children}
       </div>

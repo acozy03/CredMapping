@@ -286,7 +286,7 @@ export function MissingDocsManager({
         {isLoading ? (
           <div className="h-12 w-full animate-pulse rounded bg-zinc-800" />
         ) : filteredDocs.length > 0 ? (
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-700">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-700">
             <div className="hide-scrollbar overflow-x-auto border-b border-zinc-700">
               <table className="w-full min-w-[980px] table-fixed text-sm">
                 <colgroup>
@@ -317,7 +317,7 @@ export function MissingDocsManager({
                 </thead>
               </table>
             </div>
-            <ScrollIndicatorContainer className="min-h-0 h-full" viewportClassName="hide-scrollbar overflow-auto">
+            <ScrollIndicatorContainer className="min-h-0 flex-1" viewportClassName="hide-scrollbar overflow-auto">
               <table className="w-full min-w-[980px] table-fixed text-sm">
                 <colgroup>
                   <col className="w-[19%]" />
