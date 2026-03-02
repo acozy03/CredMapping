@@ -209,11 +209,12 @@ export function MetricsTrendChart({
         <div className="mt-3 border-t pt-3">
           {showGraphFilters && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Graph filters</h3>
-              <div className="flex flex-wrap gap-2">
-                <div className="flex gap-1 rounded-md border p-1">
+              <h3 className="text-base font-semibold">Graph filters</h3>
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-1 rounded-md border p-1">
                   {VIEW_MODES.map((option) => (
                     <Button
+                      className="w-full justify-center"
                       key={option}
                       onClick={() => setViewMode(option)}
                       size="sm"
@@ -224,9 +225,10 @@ export function MetricsTrendChart({
                     </Button>
                   ))}
                 </div>
-                <div className="flex gap-1 rounded-md border p-1">
+                <div className="grid grid-cols-2 gap-1 rounded-md border p-1">
                   {CHART_MODES.map((option) => (
                     <Button
+                      className="w-full justify-center"
                       key={option}
                       onClick={() => setChartMode(option)}
                       size="sm"
@@ -245,7 +247,7 @@ export function MetricsTrendChart({
             <p className="text-muted-foreground py-6 text-sm">No historical trend data available.</p>
           ) : (
             <div className={showGraphFilters ? "mt-4" : "mt-1"}>
-              <ChartContainer className="h-[180px] w-full" config={chartConfig}>
+              <ChartContainer className="h-[300px] w-full" config={chartConfig}>
                 {activeChartMode === "line" ? (
                   <LineChart data={chartData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                     <CartesianGrid vertical={false} />

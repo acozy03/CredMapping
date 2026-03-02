@@ -11,7 +11,6 @@ import { useSetFacilitiesPending } from "./facilities-pending-context";
 interface FacilitiesFilterBarProps {
   sort: string;
   activityFilter: string;
-  contactsFilter: string;
   search: string;
   isSuperAdmin: boolean;
   graphFilters?: ReactNode;
@@ -22,13 +21,11 @@ interface FacilitiesFilterBarProps {
 const DEFAULTS: Record<string, string> = {
   sort: "name_asc",
   activity: "all",
-  contacts: "all",
 };
 
 export function FacilitiesFilterBar({
   sort,
   activityFilter,
-  contactsFilter,
   search: initialSearch,
   isSuperAdmin,
   graphFilters,
@@ -80,7 +77,6 @@ export function FacilitiesFilterBar({
   const hasActiveFilters =
     sort !== "name_asc" ||
     activityFilter !== "all" ||
-    contactsFilter !== "all" ||
     initialSearch !== "";
 
   if (compact) {
@@ -130,17 +126,6 @@ export function FacilitiesFilterBar({
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
           <option value="in_progress">In progress</option>
-        </select>
-
-        <select
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-          disabled={isPending}
-          onChange={(e) => navigate({ contacts: e.target.value })}
-          value={contactsFilter}
-        >
-          <option value="all">All contacts</option>
-          <option value="with">With contacts</option>
-          <option value="without">Without contacts</option>
         </select>
 
         {isPending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -221,25 +206,10 @@ export function FacilitiesFilterBar({
         </select>
       </label>
 
-      {/* Contact coverage */}
-      <label className="space-y-1">
-        <span className="text-xs text-muted-foreground">Contact coverage</span>
-        <select
-          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-          disabled={isPending}
-          onChange={(e) => navigate({ contacts: e.target.value })}
-          value={contactsFilter}
-        >
-          <option value="all">All facilities</option>
-          <option value="with">With contacts</option>
-          <option value="without">Without contacts</option>
-        </select>
-      </label>
-
       {graphFilters}
 
       {/* Actions */}
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+      <div className="mt-auto flex flex-wrap items-center gap-2 border-t pt-3">
         {hasActiveFilters && (
           <Button
             className="flex-1"

@@ -35,11 +35,12 @@ export function ProvidersTopSection({
 
   const graphFilters = isChartOpen ? (
     <div className="space-y-2 border-t pt-3">
-      <h3 className="text-sm font-semibold">Graph filters</h3>
+      <h3 className="text-base font-semibold">Graph filters</h3>
       <div className="space-y-2">
-        <div className="flex flex-wrap gap-1 rounded-md border p-1">
+        <div className="grid grid-cols-3 gap-1 rounded-md border p-1">
           {VIEW_MODES.map((option) => (
             <Button
+              className="w-full justify-center"
               key={option}
               onClick={() => setViewMode(option)}
               size="sm"
@@ -50,9 +51,10 @@ export function ProvidersTopSection({
             </Button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1 rounded-md border p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-md border p-1">
           {CHART_MODES.map((option) => (
             <Button
+              className="w-full justify-center"
               key={option}
               onClick={() => setChartMode(option)}
               size="sm"

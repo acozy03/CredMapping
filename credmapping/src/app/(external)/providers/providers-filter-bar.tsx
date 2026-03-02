@@ -207,7 +207,7 @@ export function ProvidersFilterBar({
       {graphFilters}
 
       {/* Actions */}
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+      <div className="mt-auto flex flex-wrap items-center gap-2 border-t pt-3">
         {hasActiveFilters && (
           <Button
             className="flex-1"
