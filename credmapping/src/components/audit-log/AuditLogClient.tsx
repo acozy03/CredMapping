@@ -107,8 +107,8 @@ export function AuditLogClient() {
   const [action, setAction] = useState<"all" | "insert" | "update" | "delete">("all");
   const [tableName, setTableName] = useState("");
 
-  const today = new Date().toISOString().split("T")[0];
-  const sevenDaysAgo = new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split("T")[0];
+  const today = new Date().toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().slice(0, 10);
 
   const [fromDate, setFromDate] = useState(sevenDaysAgo);
   const [toDate, setToDate] = useState(today);
