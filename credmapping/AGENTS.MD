@@ -104,6 +104,8 @@ Prefer explicit names over abbreviations unless they are domain-standard.
 
 ## 9) tRPC / Server / DB Practices
 - Keep routers thin and delegate substantial logic into focused functions/modules.
+- When creating/editing any routes/logic, you should NEVER use raw SQL, only Drizzle syntax.
+- You should always reference schema.ts as groundtruth database schema when dealing with any changes/fixes that have to touch anything as part of the database. 
 - Validate procedure inputs/outputs with Zod.
 - Enforce auth and role checks consistently (follow existing auth/domain patterns).
 - For Drizzle mutations, always ensure safe query constraints (`WHERE` on updates/deletes).
@@ -116,6 +118,8 @@ Prefer explicit names over abbreviations unless they are domain-standard.
 - Keep spacing, typography, and interaction patterns consistent with existing screens.
 - Avoid one-off styling if a shared variant/component can solve it.
 - Ensure dark/light theme compatibility when touching themed UI.
+- The site is mainly focused on being single page rendering, meaning that we shouldn't have to scroll on any of the site's pages, instead keeping things contained in scroll-able containers without scroll bars, using the scroll-indicator.tsx as the alternative. 
+- All pages do not need a header, description or emojis, when tackling UI tasks, take advtange of completed pages referenced in the user prompt.  
 
 ## 11) Performance & Reliability Expectations
 - Avoid unnecessary rerenders and oversized client components.
@@ -134,7 +138,7 @@ For each change:
 ## 13) Anti-Patterns to Avoid
 - Introducing duplicate components that differ only superficially.
 - Mixing domain logic directly into presentational components.
-- Creating giant “god” components/files.
+- Creating giant components/files.
 - Unstructured utility dumping in random files.
 - Silent behavior changes without docs/tests/notes.
 
@@ -142,6 +146,7 @@ For each change:
 1. Read task + this AGENTS.md.
 2. Inspect existing patterns in neighboring files.
 3. Implement minimal change with reusable abstractions.
+4. If when reading existing code, and you happen to identify bad practices / a bug, you must fix and explain the finding(s) and solution(s) in the response. 
 4. Run required lint checks.
 5. Resolve linting issues.
 6. Summarize changes and validation results clearly.
