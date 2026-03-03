@@ -38,6 +38,23 @@ const getLatestActivityDate = (
   return latest;
 };
 
+const toCommLogAuditData = (
+  row: Partial<typeof commLogs.$inferSelect> | null | undefined,
+): Record<string, unknown> | undefined => {
+  if (!row) return undefined;
+
+  return {
+    id: row.id ?? null,
+    relatedType: row.relatedType ?? null,
+    relatedId: row.relatedId ?? null,
+    commType: row.commType ?? null,
+    createdBy: row.createdBy ?? null,
+    lastUpdatedBy: row.lastUpdatedBy ?? null,
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+  };
+};
+
 export const commLogsRouter = createTRPCRouter({
    // listByProvider: Gets the activity feed for the right panel
   listByProvider: protectedProcedure
@@ -138,7 +155,7 @@ export const commLogsRouter = createTRPCRouter({
         action: "create",
         actorId: actor?.id ?? null,
         actorEmail: actor?.email ?? ctx.user.email ?? null,
-        newData: created as unknown as Record<string, unknown>,
+        newData: toCommLogAuditData(created),
       });
 
       return created;
@@ -535,8 +552,8 @@ export const commLogsRouter = createTRPCRouter({
         action: "update",
         actorId: actor?.id ?? null,
         actorEmail: actor?.email ?? ctx.user.email ?? null,
-        oldData: existing as unknown as Record<string, unknown>,
-        newData: updated as unknown as Record<string, unknown>,
+        oldData: toCommLogAuditData(existing),
+        newData: toCommLogAuditData(updated),
       });
 
       return updated;
