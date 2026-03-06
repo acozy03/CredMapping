@@ -1,12 +1,13 @@
 import { and, count, desc, eq, ilike, inArray, isNotNull, or } from "drizzle-orm";
 import { Mail, Phone } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ProvidersPendingProvider, ProvidersListOverlay } from "~/app/(external)/providers/providers-pending-context";
 import { ProvidersTopSection } from "~/app/(external)/providers/providers-top-section";
 import { ProvidersAutoAdvance } from "~/components/providers-auto-advance";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 import { getAppRole } from "~/server/auth/domain";
-import { db } from "~/server/db";
+import { withUserDb } from "~/server/db";
 import {
   agents,
   providerFacilityCredentials,
@@ -101,13 +102,17 @@ export default async function ProvidersPage(props: {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const agentRoleRow = user
-    ? await db
+  if (!user) redirect("/");
+
+  const agentRoleRow = await withUserDb({
+    user,
+    run: (db) =>
+      db
         .select({ role: agents.role })
         .from(agents)
         .where(eq(agents.userId, user.id))
-        .limit(1)
-    : [];
+        .limit(1),
+  });
 
   const isSuperAdmin = getAppRole({ agentRole: agentRoleRow[0]?.role }) === "superadmin";
 
@@ -140,10 +145,14 @@ export default async function ProvidersPage(props: {
       )
     : undefined;
 
-  const statusRows = await db
-    .selectDistinct({ privilegeTier: providerVestaPrivileges.privilegeTier })
-    .from(providerVestaPrivileges)
-    .where(isNotNull(providerVestaPrivileges.privilegeTier));
+  const statusRows = await withUserDb({
+    user,
+    run: (db) =>
+      db
+        .selectDistinct({ privilegeTier: providerVestaPrivileges.privilegeTier })
+        .from(providerVestaPrivileges)
+        .where(isNotNull(providerVestaPrivileges.privilegeTier)),
+  });
 
   const statusOptions = statusRows
     .map((row) => row.privilegeTier)
@@ -160,10 +169,14 @@ export default async function ProvidersPage(props: {
   const filteredProviderIdRows =
     doctorStatusFilter === "all"
       ? []
-      : await db
-          .selectDistinct({ providerId: providerVestaPrivileges.providerId })
-          .from(providerVestaPrivileges)
-          .where(eq(providerVestaPrivileges.privilegeTier, doctorStatusFilter));
+      : await withUserDb({
+          user,
+          run: (db) =>
+            db
+              .selectDistinct({ providerId: providerVestaPrivileges.providerId })
+              .from(providerVestaPrivileges)
+              .where(eq(providerVestaPrivileges.privilegeTier, doctorStatusFilter)),
+        });
 
   const filteredProviderIds = filteredProviderIdRows
     .map((row) => row.providerId)
@@ -181,33 +194,37 @@ export default async function ProvidersPage(props: {
 
   const [totalProvidersRow, providerCreatedRows, credentialCreatedRows, workflowIncidentRows] =
     hasProviderMatches
-      ? await Promise.all([
-          db
-            .select({ count: count() })
-            .from(providers)
-            .where(providerFilterWhere),
-          db
-            .select({ createdAt: providers.createdAt })
-            .from(providers)
-            .where(providerFilterWhere),
-          db
-            .select({ createdAt: providerFacilityCredentials.createdAt })
-            .from(providerFacilityCredentials)
-            .innerJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
-            .where(providerFilterWhere),
-          db
-            .select({ createdAt: workflowPhases.createdAt })
-            .from(workflowPhases)
-            .innerJoin(
-              providerFacilityCredentials,
-              and(
-                eq(workflowPhases.relatedId, providerFacilityCredentials.id),
-                eq(workflowPhases.workflowType, "pfc"),
-              ),
-            )
-            .innerJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
-            .where(providerFilterWhere),
-        ])
+      ? await withUserDb({
+          user,
+          run: (db) =>
+            Promise.all([
+              db
+                .select({ count: count() })
+                .from(providers)
+                .where(providerFilterWhere),
+              db
+                .select({ createdAt: providers.createdAt })
+                .from(providers)
+                .where(providerFilterWhere),
+              db
+                .select({ createdAt: providerFacilityCredentials.createdAt })
+                .from(providerFacilityCredentials)
+                .innerJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+                .where(providerFilterWhere),
+              db
+                .select({ createdAt: workflowPhases.createdAt })
+                .from(workflowPhases)
+                .innerJoin(
+                  providerFacilityCredentials,
+                  and(
+                    eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+                    eq(workflowPhases.workflowType, "pfc"),
+                  ),
+                )
+                .innerJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+                .where(providerFilterWhere),
+            ]),
+        })
       : [[{ count: 0 }], [], [], []];
 
   const providerTimeline = new Map<string, { primary: number; secondary: number; tertiary: number }>();
@@ -236,34 +253,42 @@ export default async function ProvidersPage(props: {
   const totalProviders = totalProvidersRow[0]?.count ?? 0;
   const visibleLimit = Math.min(requestedLimit, Math.max(totalProviders, pageSize));
 
-  const providerRows = await db
-    .select()
-    .from(providers)
-    .where(providerFilterWhere)
-    .orderBy(providers.lastName, providers.firstName, providers.middleName)
-    .limit(visibleLimit);
+  const providerRows = await withUserDb({
+    user,
+    run: (db) =>
+      db
+        .select()
+        .from(providers)
+        .where(providerFilterWhere)
+        .orderBy(providers.lastName, providers.firstName, providers.middleName)
+        .limit(visibleLimit),
+  });
 
   const providerIds = providerRows.map((provider) => provider.id);
 
   const [licenseRows, privilegeRows, credentialRows] =
     providerIds.length > 0
-      ? await Promise.all([
-          db
-            .select()
-            .from(providerStateLicenses)
-            .where(inArray(providerStateLicenses.providerId, providerIds))
-            .orderBy(desc(providerStateLicenses.expiresAt), desc(providerStateLicenses.createdAt)),
-          db
-            .select()
-            .from(providerVestaPrivileges)
-            .where(inArray(providerVestaPrivileges.providerId, providerIds))
-            .orderBy(desc(providerVestaPrivileges.updatedAt)),
-          db
-            .select()
-            .from(providerFacilityCredentials)
-            .where(inArray(providerFacilityCredentials.providerId, providerIds))
-            .orderBy(desc(providerFacilityCredentials.updatedAt)),
-        ])
+      ? await withUserDb({
+          user,
+          run: (db) =>
+            Promise.all([
+              db
+                .select()
+                .from(providerStateLicenses)
+                .where(inArray(providerStateLicenses.providerId, providerIds))
+                .orderBy(desc(providerStateLicenses.expiresAt), desc(providerStateLicenses.createdAt)),
+              db
+                .select()
+                .from(providerVestaPrivileges)
+                .where(inArray(providerVestaPrivileges.providerId, providerIds))
+                .orderBy(desc(providerVestaPrivileges.updatedAt)),
+              db
+                .select()
+                .from(providerFacilityCredentials)
+                .where(inArray(providerFacilityCredentials.providerId, providerIds))
+                .orderBy(desc(providerFacilityCredentials.updatedAt)),
+            ]),
+        })
       : [[], [], []];
 
   const licensesByProvider = new Map<string, typeof licenseRows>();
@@ -294,16 +319,20 @@ export default async function ProvidersPage(props: {
 
   const pfcWorkflowRows =
     credentialIds.length > 0
-      ? await db
-          .select()
-          .from(workflowPhases)
-          .where(
-            and(
-              eq(workflowPhases.workflowType, "pfc"),
-              inArray(workflowPhases.relatedId, credentialIds),
-            ),
-          )
-          .orderBy(desc(workflowPhases.updatedAt))
+      ? await withUserDb({
+          user,
+          run: (db) =>
+            db
+              .select()
+              .from(workflowPhases)
+              .where(
+                and(
+                  eq(workflowPhases.workflowType, "pfc"),
+                  inArray(workflowPhases.relatedId, credentialIds),
+                ),
+              )
+              .orderBy(desc(workflowPhases.updatedAt)),
+        })
       : [];
 
   const workflowsByCredential = new Map<string, typeof pfcWorkflowRows>();

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { Header } from "~/components/layout/header";
 import { Sidebar } from "~/components/layout/sidebar";
 import { getAppRole } from "~/server/auth/domain";
-import { db } from "~/server/db";
+import { withUserDb } from "~/server/db";
 import { agents } from "~/server/db/schema";
 import { createClient } from "~/utils/supabase/server";
 
@@ -29,11 +29,15 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   if (error || !user) redirect("/");
 
-  const agentRecord = await db
-    .select({ role: agents.role })
-    .from(agents)
-    .where(eq(agents.userId, user.id))
-    .limit(1);
+  const agentRecord = await withUserDb({
+    user,
+    run: (db) =>
+      db
+        .select({ role: agents.role })
+        .from(agents)
+        .where(eq(agents.userId, user.id))
+        .limit(1),
+  });
 
   const dbRole = agentRecord[0]?.role;
 

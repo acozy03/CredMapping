@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "~/utils/supabase/server";
 import { getAppRole, type AppRole } from "~/server/auth/domain";
-import { db } from "~/server/db";
+import { withUserDb } from "~/server/db";
 import { agents } from "~/server/db/schema";
 import { ilike } from "drizzle-orm";
 
@@ -37,11 +37,15 @@ export async function requireRole(allowedRoles: AppRole[]): Promise<AppRole> {
   const normalizedEmail = user.email?.toLowerCase();
 
   const agentRecord = normalizedEmail
-    ? await db
-        .select({ role: agents.role })
-        .from(agents)
-        .where(ilike(agents.email, normalizedEmail))
-        .limit(1)
+    ? await withUserDb({
+        user,
+        run: (db) =>
+          db
+            .select({ role: agents.role })
+            .from(agents)
+            .where(ilike(agents.email, normalizedEmail))
+            .limit(1),
+      })
     : [];
 
   const userRole = getAppRole({ agentRole: agentRecord[0]?.role });

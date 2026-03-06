@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -16,7 +16,7 @@ import { ActivityTimeline } from "~/components/audit-log/ActivityTimeline";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { CollapsibleSection } from "~/components/ui/collapsible-section";
-import { db } from "~/server/db";
+import { withUserDb } from "~/server/db";
 import {
   agents,
   facilities,
@@ -30,6 +30,7 @@ import {
   EditFacilityDialog,
   DeleteFacilityDialog,
 } from "~/components/facilities/facility-actions";
+import { createClient } from "~/utils/supabase/server";
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 
@@ -103,11 +104,23 @@ export default async function FacilityProfilePage({
 }) {
   const { facilityId } = await params;
 
-  const facilityRow = await db
-    .select()
-    .from(facilities)
-    .where(eq(facilities.id, facilityId))
-    .limit(1);
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) redirect("/");
+
+  const facilityRow = await withUserDb({
+    user,
+    run: (db) =>
+      db
+        .select()
+        .from(facilities)
+        .where(eq(facilities.id, facilityId))
+        .limit(1),
+  });
 
   const facility = facilityRow[0];
   if (!facility) notFound();
@@ -115,37 +128,49 @@ export default async function FacilityProfilePage({
   /* ── Parallel data loads ──────────────────────────────────── */
 
   const [contactRows, preliveRows, credentialRows] = await Promise.all([
-    db
-      .select()
-      .from(facilityContacts)
-      .where(eq(facilityContacts.facilityId, facilityId))
-      .orderBy(desc(facilityContacts.isPrimary), facilityContacts.name),
-    db
-      .select()
-      .from(facilityPreliveInfo)
-      .where(eq(facilityPreliveInfo.facilityId, facilityId))
-      .orderBy(desc(facilityPreliveInfo.updatedAt)),
-    db
-      .select({
-        id: providerFacilityCredentials.id,
-        providerId: providerFacilityCredentials.providerId,
-        providerFirstName: providers.firstName,
-        providerMiddleName: providers.middleName,
-        providerLastName: providers.lastName,
-        providerDegree: providers.degree,
-        facilityType: providerFacilityCredentials.facilityType,
-        priority: providerFacilityCredentials.priority,
-        decision: providerFacilityCredentials.decision,
-        privileges: providerFacilityCredentials.privileges,
-        notes: providerFacilityCredentials.notes,
-        formSize: providerFacilityCredentials.formSize,
-        applicationRequired: providerFacilityCredentials.applicationRequired,
-        updatedAt: providerFacilityCredentials.updatedAt,
-      })
-      .from(providerFacilityCredentials)
-      .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
-      .where(eq(providerFacilityCredentials.facilityId, facilityId))
-      .orderBy(desc(providerFacilityCredentials.updatedAt)),
+    withUserDb({
+      user,
+      run: (db) =>
+        db
+          .select()
+          .from(facilityContacts)
+          .where(eq(facilityContacts.facilityId, facilityId))
+          .orderBy(desc(facilityContacts.isPrimary), facilityContacts.name),
+    }),
+    withUserDb({
+      user,
+      run: (db) =>
+        db
+          .select()
+          .from(facilityPreliveInfo)
+          .where(eq(facilityPreliveInfo.facilityId, facilityId))
+          .orderBy(desc(facilityPreliveInfo.updatedAt)),
+    }),
+    withUserDb({
+      user,
+      run: (db) =>
+        db
+          .select({
+            id: providerFacilityCredentials.id,
+            providerId: providerFacilityCredentials.providerId,
+            providerFirstName: providers.firstName,
+            providerMiddleName: providers.middleName,
+            providerLastName: providers.lastName,
+            providerDegree: providers.degree,
+            facilityType: providerFacilityCredentials.facilityType,
+            priority: providerFacilityCredentials.priority,
+            decision: providerFacilityCredentials.decision,
+            privileges: providerFacilityCredentials.privileges,
+            notes: providerFacilityCredentials.notes,
+            formSize: providerFacilityCredentials.formSize,
+            applicationRequired: providerFacilityCredentials.applicationRequired,
+            updatedAt: providerFacilityCredentials.updatedAt,
+          })
+          .from(providerFacilityCredentials)
+          .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+          .where(eq(providerFacilityCredentials.facilityId, facilityId))
+          .orderBy(desc(providerFacilityCredentials.updatedAt)),
+    }),
   ]);
 
   /* ── Workflow phases for credentials ──────────────────────── */
@@ -155,28 +180,32 @@ export default async function FacilityProfilePage({
   const workflowRows =
     credentialIds.length === 0
       ? []
-      : await db
-          .select({
-            id: workflowPhases.id,
-            relatedId: workflowPhases.relatedId,
-            phaseName: workflowPhases.phaseName,
-            status: workflowPhases.status,
-            startDate: workflowPhases.startDate,
-            dueDate: workflowPhases.dueDate,
-            completedAt: workflowPhases.completedAt,
-            updatedAt: workflowPhases.updatedAt,
-            agentFirstName: agents.firstName,
-            agentLastName: agents.lastName,
-          })
-          .from(workflowPhases)
-          .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-          .where(
-            and(
-              eq(workflowPhases.workflowType, "pfc"),
-              inArray(workflowPhases.relatedId, credentialIds),
-            ),
-          )
-          .orderBy(asc(workflowPhases.phaseName), desc(workflowPhases.updatedAt));
+      : await withUserDb({
+          user,
+          run: (db) =>
+            db
+              .select({
+                id: workflowPhases.id,
+                relatedId: workflowPhases.relatedId,
+                phaseName: workflowPhases.phaseName,
+                status: workflowPhases.status,
+                startDate: workflowPhases.startDate,
+                dueDate: workflowPhases.dueDate,
+                completedAt: workflowPhases.completedAt,
+                updatedAt: workflowPhases.updatedAt,
+                agentFirstName: agents.firstName,
+                agentLastName: agents.lastName,
+              })
+              .from(workflowPhases)
+              .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+              .where(
+                and(
+                  eq(workflowPhases.workflowType, "pfc"),
+                  inArray(workflowPhases.relatedId, credentialIds),
+                ),
+              )
+              .orderBy(asc(workflowPhases.phaseName), desc(workflowPhases.updatedAt)),
+        });
 
   const normalizedWorkflowRows = workflowRows.map((row) => ({
     id: row.id,

@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { db } from "~/server/db";
+import { withUserDb } from "~/server/db";
 import { providers } from "~/server/db/schema";
+import { createClient } from "~/utils/supabase/server";
 
 const formatProviderName = (provider: {
   firstName: string | null;
@@ -23,16 +24,29 @@ export async function GET(
 ) {
   const { providerId } = await params;
 
-  const row = await db
-    .select({
-      firstName: providers.firstName,
-      middleName: providers.middleName,
-      lastName: providers.lastName,
-      degree: providers.degree,
-    })
-    .from(providers)
-    .where(eq(providers.id, providerId))
-    .limit(1);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ label: "Provider Profile" }, { status: 401 });
+  }
+
+  const row = await withUserDb({
+    user,
+    run: (db) =>
+      db
+        .select({
+          firstName: providers.firstName,
+          middleName: providers.middleName,
+          lastName: providers.lastName,
+          degree: providers.degree,
+        })
+        .from(providers)
+        .where(eq(providers.id, providerId))
+        .limit(1),
+  });
 
   const provider = row[0];
   if (!provider) {

@@ -14,7 +14,7 @@ import { ZodError } from "zod";
 
 import { env } from "~/env";
 import { getAppRole, isAllowedEmail } from "~/server/auth/domain";
-import { db, withRls } from "~/server/db";
+import { db, withUserDb } from "~/server/db";
 import { agents } from "~/server/db/schema";
 
 const parseCookieHeader = (cookieHeader: string): { name: string; value: string }[] => {
@@ -71,12 +71,8 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   const authenticatedUser = user && isAllowedEmail(user.email) ? user : null;
 
   const [agent] = authenticatedUser
-    ? await withRls({
-        jwtClaims: {
-          sub: authenticatedUser.id,
-          email: authenticatedUser.email?.toLowerCase() ?? "",
-          role: "authenticated",
-        },
+    ? await withUserDb({
+        user: authenticatedUser,
         run: (tx) =>
           tx
             .select({ role: agents.role })
@@ -170,18 +166,46 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
 
-export const protectedProcedure = publicProcedure.use(({ ctx, next }) => {
-  if (!ctx.user) {
+const requireAuthenticatedUser = t.middleware(({ ctx, next }) => {
+  const user = ctx.user;
+
+  if (!user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Please sign in." });
   }
 
   return next({
     ctx: {
       ...ctx,
-      user: ctx.user,
+      user,
     },
   });
 });
+
+const withProtectedDb = t.middleware(async ({ ctx, next }) => {
+  const user = ctx.user;
+
+  if (!user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Please sign in." });
+  }
+
+  const result = await withUserDb({
+    user,
+    run: (requestDb) =>
+      next({
+        ctx: {
+          ...ctx,
+          db: requestDb,
+          user,
+        },
+      }),
+  });
+
+  return result;
+});
+
+export const protectedProcedure = publicProcedure
+  .use(requireAuthenticatedUser)
+  .use(withProtectedDb);
 
 export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.appRole !== "superadmin") {
