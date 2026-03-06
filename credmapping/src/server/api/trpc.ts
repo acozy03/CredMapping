@@ -8,14 +8,12 @@
  */
 import { createServerClient } from "@supabase/ssr";
 import { TRPCError, initTRPC } from "@trpc/server";
-import { eq } from "drizzle-orm";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { env } from "~/env";
-import { getAppRole, isAllowedEmail } from "~/server/auth/domain";
+import { resolveAuthContextForUser } from "~/server/auth/request-context";
 import { db, withUserDb } from "~/server/db";
-import { agents } from "~/server/db/schema";
 
 const parseCookieHeader = (cookieHeader: string): { name: string; value: string }[] => {
   return cookieHeader
@@ -68,26 +66,12 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const authenticatedUser = user && isAllowedEmail(user.email) ? user : null;
-
-  const [agent] = authenticatedUser
-    ? await withUserDb({
-        user: authenticatedUser,
-        run: (tx) =>
-          tx
-            .select({ role: agents.role })
-            .from(agents)
-            .where(eq(agents.userId, authenticatedUser.id))
-            .limit(1),
-      })
-    : [];
+  const authContext = await resolveAuthContextForUser(user);
 
   return {
     db,
-    user: authenticatedUser,
-    appRole: authenticatedUser
-      ? getAppRole({ agentRole: agent?.role })
-      : "user",
+    user: authContext.user,
+    appRole: authContext.appRole,
     ...opts,
   };
 };

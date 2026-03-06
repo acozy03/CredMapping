@@ -1,22 +1,19 @@
-import { and, count, desc, eq, ilike, inArray, isNotNull, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { Mail, Phone } from "lucide-react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { ProvidersPendingProvider, ProvidersListOverlay } from "~/app/(external)/providers/providers-pending-context";
 import { ProvidersTopSection } from "~/app/(external)/providers/providers-top-section";
 import { ProvidersAutoAdvance } from "~/components/providers-auto-advance";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
-import { getAppRole } from "~/server/auth/domain";
+import { requireRequestAuthContext } from "~/server/auth/request-context";
 import { withUserDb } from "~/server/db";
 import {
-  agents,
   providerFacilityCredentials,
   providerStateLicenses,
   providers,
   providerVestaPrivileges,
   workflowPhases,
 } from "~/server/db/schema";
-import { createClient } from "~/utils/supabase/server";
 
 const formatDate = (value: Date | string | null) => {
   if (!value) return "—";
@@ -62,6 +59,41 @@ const isProviderSort = (value: string): value is ProviderSort =>
     value,
   );
 
+const buildWhereClause = (...conditions: Array<Parameters<typeof and>[number] | undefined>) => {
+  const definedConditions = conditions.filter((condition) => condition !== undefined);
+  return definedConditions.length > 0 ? and(...definedConditions) : undefined;
+};
+
+type TrendRow = {
+  count: number;
+  date: string | null;
+};
+
+const buildTrendPoints = (params: {
+  primary: TrendRow[];
+  secondary: TrendRow[];
+  tertiary: TrendRow[];
+}) => {
+  const trendMap = new Map<string, { primary: number; secondary: number; tertiary: number }>();
+
+  const addRows = (rows: TrendRow[], metric: "primary" | "secondary" | "tertiary") => {
+    for (const row of rows) {
+      if (!row.date) continue;
+      const current = trendMap.get(row.date) ?? { primary: 0, secondary: 0, tertiary: 0 };
+      current[metric] += Number(row.count);
+      trendMap.set(row.date, current);
+    }
+  };
+
+  addRows(params.primary, "primary");
+  addRows(params.secondary, "secondary");
+  addRows(params.tertiary, "tertiary");
+
+  return Array.from(trendMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, values]) => ({ date, ...values }));
+};
+
 const getPrivilegeTierTone = (privilegeTier: string | null) => {
   const normalizedTier = privilegeTier?.toLowerCase() ?? "";
 
@@ -97,24 +129,8 @@ const getLicenseExpirationTone = (value: Date | string | null) => {
 export default async function ProvidersPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/");
-
-  const agentRoleRow = await withUserDb({
-    user,
-    run: (db) =>
-      db
-        .select({ role: agents.role })
-        .from(agents)
-        .where(eq(agents.userId, user.id))
-        .limit(1),
-  });
-
-  const isSuperAdmin = getAppRole({ agentRole: agentRoleRow[0]?.role }) === "superadmin";
+  const { appRole, user } = await requireRequestAuthContext();
+  const isSuperAdmin = appRole === "superadmin";
 
   const searchParams = await props.searchParams;
   const rawSearch = searchParams?.search;
@@ -189,30 +205,46 @@ export default async function ProvidersPage(props: {
     doctorStatusFilter === "all"
       ? providerSearchWhere
       : filteredProviderIds.length > 0
-        ? and(providerSearchWhere, inArray(providers.id, filteredProviderIds))
+        ? buildWhereClause(providerSearchWhere, inArray(providers.id, filteredProviderIds))
         : undefined;
 
-  const [totalProvidersRow, providerCreatedRows, credentialCreatedRows, workflowIncidentRows] =
-    hasProviderMatches
-      ? await withUserDb({
-          user,
-          run: (db) =>
-            Promise.all([
+  const {
+    credentialRows,
+    licenseRows,
+    privilegeRows,
+    providerRows,
+    providerTrendPoints,
+    pfcWorkflowRows,
+    totalProviders,
+  } = hasProviderMatches
+    ? await withUserDb({
+        user,
+        run: async (db) => {
+          const providerDate = sql<string>`to_char(${providers.createdAt}::date, 'YYYY-MM-DD')`;
+          const credentialDate = sql<string>`to_char(${providerFacilityCredentials.createdAt}::date, 'YYYY-MM-DD')`;
+          const workflowDate = sql<string>`to_char(${workflowPhases.createdAt}::date, 'YYYY-MM-DD')`;
+
+          const [totalProvidersRow, providerTrendRows, credentialTrendRows, workflowTrendRows] =
+            await Promise.all([
               db
                 .select({ count: count() })
                 .from(providers)
                 .where(providerFilterWhere),
               db
-                .select({ createdAt: providers.createdAt })
+                .select({ count: count(), date: providerDate })
                 .from(providers)
-                .where(providerFilterWhere),
+                .where(providerFilterWhere)
+                .groupBy(providerDate)
+                .orderBy(providerDate),
               db
-                .select({ createdAt: providerFacilityCredentials.createdAt })
+                .select({ count: count(), date: credentialDate })
                 .from(providerFacilityCredentials)
                 .innerJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
-                .where(providerFilterWhere),
+                .where(providerFilterWhere)
+                .groupBy(credentialDate)
+                .orderBy(credentialDate),
               db
-                .select({ createdAt: workflowPhases.createdAt })
+                .select({ count: count(), date: workflowDate })
                 .from(workflowPhases)
                 .innerJoin(
                   providerFacilityCredentials,
@@ -222,74 +254,84 @@ export default async function ProvidersPage(props: {
                   ),
                 )
                 .innerJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
-                .where(providerFilterWhere),
-            ]),
-        })
-      : [[{ count: 0 }], [], [], []];
+                .where(providerFilterWhere)
+                .groupBy(workflowDate)
+                .orderBy(workflowDate),
+            ]);
 
-  const providerTimeline = new Map<string, { primary: number; secondary: number; tertiary: number }>();
+          const totalProviders = totalProvidersRow[0]?.count ?? 0;
+          const visibleLimit = Math.min(requestedLimit, Math.max(totalProviders, pageSize));
+          const providerRows = await db
+            .select()
+            .from(providers)
+            .where(providerFilterWhere)
+            .orderBy(providers.lastName, providers.firstName, providers.middleName)
+            .limit(visibleLimit);
 
-  const addToTimeline = (
-    dateValue: Date | string | null,
-    metric: "primary" | "secondary" | "tertiary",
-  ) => {
-    if (!dateValue) return;
-    const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-    if (Number.isNaN(date.getTime())) return;
-    const key = date.toISOString().slice(0, 10);
-    const current = providerTimeline.get(key) ?? { primary: 0, secondary: 0, tertiary: 0 };
-    current[metric] += 1;
-    providerTimeline.set(key, current);
-  };
+          const providerIds = providerRows.map((provider) => provider.id);
+          const [licenseRows, privilegeRows, credentialRows] =
+            providerIds.length > 0
+              ? await Promise.all([
+                  db
+                    .select()
+                    .from(providerStateLicenses)
+                    .where(inArray(providerStateLicenses.providerId, providerIds))
+                    .orderBy(
+                      desc(providerStateLicenses.expiresAt),
+                      desc(providerStateLicenses.createdAt),
+                    ),
+                  db
+                    .select()
+                    .from(providerVestaPrivileges)
+                    .where(inArray(providerVestaPrivileges.providerId, providerIds))
+                    .orderBy(desc(providerVestaPrivileges.updatedAt)),
+                  db
+                    .select()
+                    .from(providerFacilityCredentials)
+                    .where(inArray(providerFacilityCredentials.providerId, providerIds))
+                    .orderBy(desc(providerFacilityCredentials.updatedAt)),
+                ])
+              : [[], [], []];
 
-  for (const row of providerCreatedRows) addToTimeline(row.createdAt, "primary");
-  for (const row of credentialCreatedRows) addToTimeline(row.createdAt, "secondary");
-  for (const row of workflowIncidentRows) addToTimeline(row.createdAt, "tertiary");
+          const credentialIds = credentialRows.map((credential) => credential.id);
+          const pfcWorkflowRows =
+            credentialIds.length > 0
+              ? await db
+                  .select()
+                  .from(workflowPhases)
+                  .where(
+                    and(
+                      eq(workflowPhases.workflowType, "pfc"),
+                      inArray(workflowPhases.relatedId, credentialIds),
+                    ),
+                  )
+                  .orderBy(desc(workflowPhases.updatedAt))
+              : [];
 
-  const providerTrendPoints = Array.from(providerTimeline.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, values]) => ({ date, ...values }));
-
-  const totalProviders = totalProvidersRow[0]?.count ?? 0;
-  const visibleLimit = Math.min(requestedLimit, Math.max(totalProviders, pageSize));
-
-  const providerRows = await withUserDb({
-    user,
-    run: (db) =>
-      db
-        .select()
-        .from(providers)
-        .where(providerFilterWhere)
-        .orderBy(providers.lastName, providers.firstName, providers.middleName)
-        .limit(visibleLimit),
-  });
-
-  const providerIds = providerRows.map((provider) => provider.id);
-
-  const [licenseRows, privilegeRows, credentialRows] =
-    providerIds.length > 0
-      ? await withUserDb({
-          user,
-          run: (db) =>
-            Promise.all([
-              db
-                .select()
-                .from(providerStateLicenses)
-                .where(inArray(providerStateLicenses.providerId, providerIds))
-                .orderBy(desc(providerStateLicenses.expiresAt), desc(providerStateLicenses.createdAt)),
-              db
-                .select()
-                .from(providerVestaPrivileges)
-                .where(inArray(providerVestaPrivileges.providerId, providerIds))
-                .orderBy(desc(providerVestaPrivileges.updatedAt)),
-              db
-                .select()
-                .from(providerFacilityCredentials)
-                .where(inArray(providerFacilityCredentials.providerId, providerIds))
-                .orderBy(desc(providerFacilityCredentials.updatedAt)),
-            ]),
-        })
-      : [[], [], []];
+          return {
+            credentialRows,
+            licenseRows,
+            privilegeRows,
+            providerRows,
+            providerTrendPoints: buildTrendPoints({
+              primary: providerTrendRows,
+              secondary: credentialTrendRows,
+              tertiary: workflowTrendRows,
+            }),
+            pfcWorkflowRows,
+            totalProviders,
+          };
+        },
+      })
+    : {
+        credentialRows: [],
+        licenseRows: [],
+        privilegeRows: [],
+        providerRows: [],
+        providerTrendPoints: [],
+        pfcWorkflowRows: [],
+        totalProviders: 0,
+      };
 
   const licensesByProvider = new Map<string, typeof licenseRows>();
   for (const license of licenseRows) {
@@ -314,26 +356,6 @@ export default async function ProvidersPage(props: {
     current.push(credential);
     credentialsByProvider.set(credential.providerId, current);
   }
-
-  const credentialIds = credentialRows.map((credential) => credential.id);
-
-  const pfcWorkflowRows =
-    credentialIds.length > 0
-      ? await withUserDb({
-          user,
-          run: (db) =>
-            db
-              .select()
-              .from(workflowPhases)
-              .where(
-                and(
-                  eq(workflowPhases.workflowType, "pfc"),
-                  inArray(workflowPhases.relatedId, credentialIds),
-                ),
-              )
-              .orderBy(desc(workflowPhases.updatedAt)),
-        })
-      : [];
 
   const workflowsByCredential = new Map<string, typeof pfcWorkflowRows>();
   for (const workflow of pfcWorkflowRows) {
@@ -388,7 +410,7 @@ export default async function ProvidersPage(props: {
       return a.displayName.localeCompare(b.displayName);
     });
 
-  const hasMoreProviders = visibleLimit < totalProviders;
+  const hasMoreProviders = providerRows.length < totalProviders;
   const queryParams = new URLSearchParams();
   if (search) queryParams.set("search", search);
   if (sort !== "name_asc") queryParams.set("sort", sort);
@@ -653,7 +675,7 @@ export default async function ProvidersPage(props: {
 
             <ProvidersAutoAdvance
               enabled={hasMoreProviders}
-              nextHref={createLimitHref(Math.min(visibleLimit + pageSize, totalProviders))}
+              nextHref={createLimitHref(Math.min(providerRows.length + pageSize, totalProviders))}
               rootSelector=".providers-scroll-viewport"
             />
 
