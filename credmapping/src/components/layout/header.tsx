@@ -87,7 +87,9 @@ export function Header({
         }
 
         const data = (await response.json()) as { label?: string };
-        setResolvedEntityLabel(data.label?.trim() || null);
+        const label = data.label?.trim();
+        const normalizedLabel = label === "" ? undefined : label;
+        setResolvedEntityLabel(normalizedLabel ?? null);
       })
       .catch(() => {
         if (!abortController.signal.aborted) {

@@ -24,8 +24,10 @@ export async function GET(
       return row ?? null;
     },
   });
+  const facilityName = facility?.name?.trim();
+  const normalizedFacilityName = facilityName === "" ? undefined : facilityName;
 
   return NextResponse.json({
-    label: facility?.name?.trim() || "Facility Profile",
+    label: normalizedFacilityName ?? "Facility Profile",
   });
 }
