@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import {
@@ -77,13 +77,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 import { Label } from "~/components/ui/label";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-} from "~/components/ui/pagination";
+import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 
 type WorkflowPhaseInput = {
   phaseName: string;
@@ -131,8 +125,16 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_PAGE_SIZE = 8;
+const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
+
+type DueTone = "critical" | "warning" | "safe";
+
+const WORKFLOW_DUE_TONE_BAR_STYLES = {
+  critical: "bg-rose-500",
+  warning: "bg-amber-500",
+  safe: "bg-emerald-500",
+} satisfies Record<DueTone, string>;
 
 function StatusBadge({ status }: { status: string | null }) {
   const s = (status ?? "Pending").toLowerCase();
@@ -189,38 +191,126 @@ function formatDate(d: string | Date | null | undefined): string {
   });
 }
 
-function getPageNumbers(
-  currentPage: number,
-  totalPages: number,
-): Array<number | "ellipsis"> {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
+function isCompletedStatus(status: string | null | undefined): boolean {
+  const normalized = (status ?? "").toLowerCase();
+  return (
+    normalized.includes("complet") ||
+    normalized === "done" ||
+    normalized === "approved"
+  );
+}
+
+function toStartOfDay(value: string | Date): Date {
+  const date = typeof value === "string" ? new Date(value) : new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getDueTone(dueDate: string | Date | null | undefined): DueTone {
+  if (!dueDate) return "safe";
+
+  const due = toStartOfDay(dueDate);
+  if (Number.isNaN(due.getTime())) return "safe";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const dayDiff = Math.floor(
+    (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (dayDiff < 7) return "critical";
+  if (dayDiff === 7) return "warning";
+  return "safe";
+}
+
+function getWorkflowDueTone(
+  phases: Array<{ dueDate: string | Date | null; status: string | null }>,
+): DueTone {
+  const nextDue = phases
+    .filter((phase) => phase.dueDate && !isCompletedStatus(phase.status))
+    .map((phase) => toStartOfDay(phase.dueDate!))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+
+  return nextDue ? getDueTone(nextDue) : "safe";
+}
+
+function WorkflowAutoAdvance({
+  enabled,
+  onAdvance,
+  rootSelector,
+  resetKey,
+}: {
+  enabled: boolean;
+  onAdvance: () => void;
+  rootSelector: string;
+  resetKey: string;
+}) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const hasTriggeredRef = useRef(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    hasTriggeredRef.current = false;
+    setLoading(false);
+  }, [resetKey]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const rootElement = document.querySelector(rootSelector);
+    const sentinel = sentinelRef.current;
+
+    if (!(rootElement instanceof HTMLElement) || !sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting || hasTriggeredRef.current) {
+          return;
+        }
+
+        hasTriggeredRef.current = true;
+        setLoading(true);
+        onAdvance();
+      },
+      {
+        root: rootElement,
+        rootMargin: "0px 0px 120px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [enabled, onAdvance, rootSelector]);
+
+  if (!enabled) {
+    return null;
   }
 
-  if (currentPage <= 3) {
-    return [1, 2, 3, 4, "ellipsis", totalPages];
-  }
-
-  if (currentPage >= totalPages - 2) {
-    return [
-      1,
-      "ellipsis",
-      totalPages - 3,
-      totalPages - 2,
-      totalPages - 1,
-      totalPages,
-    ];
-  }
-
-  return [
-    1,
-    "ellipsis",
-    currentPage - 1,
-    currentPage,
-    currentPage + 1,
-    "ellipsis",
-    totalPages,
-  ];
+  return (
+    <div ref={sentinelRef} className="flex min-h-12 items-center justify-center">
+      {loading && (
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin" />
+          Loading more workflows...
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ─── Incident Dialog ────────────────────────────────────── */
@@ -1296,7 +1386,7 @@ function AddWorkflowDialog() {
       }}
     >
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="h-10 gap-2">
           <Plus className="size-4" /> Add Workflow
         </Button>
       </DialogTrigger>
@@ -1986,7 +2076,7 @@ export default function WorkflowsClient() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("date_assigned_desc");
   const [search, setSearch] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -2065,11 +2155,7 @@ export default function WorkflowsClient() {
     for (const wf of workflows) {
       const key = `${wf.workflowType}:${wf.relatedId}`;
       const statusLower = (wf.status ?? "").toLowerCase();
-      const isDone = [
-        statusLower.includes("complet"),
-        statusLower === "done",
-        statusLower === "approved",
-      ].some(Boolean);
+      const isDone = isCompletedStatus(wf.status);
       const isOverdue =
         !!wf.dueDate && new Date(String(wf.dueDate)) < new Date() && !isDone;
       const isBlocked = statusLower === "blocked";
@@ -2177,25 +2263,16 @@ export default function WorkflowsClient() {
     [filteredWorkflows],
   );
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredWorkflows.length / WORKFLOW_PAGE_SIZE),
-  );
-
   useEffect(() => {
-    setCurrentPage(1);
+    setVisibleCount(WORKFLOW_BATCH_SIZE);
   }, [workflowType, agentFilter, search, sortBy]);
 
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+  const visibleGroups = useMemo(
+    () => filteredWorkflows.slice(0, visibleCount),
+    [filteredWorkflows, visibleCount],
+  );
 
-  const paginatedGroups = useMemo(() => {
-    const startIndex = (currentPage - 1) * WORKFLOW_PAGE_SIZE;
-    return filteredWorkflows.slice(startIndex, startIndex + WORKFLOW_PAGE_SIZE);
-  }, [currentPage, filteredWorkflows]);
+  const hasMoreGroups = visibleGroups.length < filteredWorkflows.length;
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -2271,7 +2348,7 @@ export default function WorkflowsClient() {
           </SelectContent>
         </Select>
 
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex h-10 items-center justify-end gap-2">
           {isFetching && !isLoading && (
             <Loader2 className="text-muted-foreground size-4 animate-spin" />
           )}
@@ -2294,13 +2371,19 @@ export default function WorkflowsClient() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {paginatedGroups.map((group) => {
+        <VirtualScrollContainer
+          className="overflow-hidden"
+          heightClassName="h-[calc(83vh)]"
+          viewportClassName="workflows-scroll-viewport"
+        >
+          <div className="space-y-3 p-4">
+          {visibleGroups.map((group) => {
             const isExpanded = expandedGroups.has(String(group.key));
             const progress =
               group.totalCount > 0
                 ? Math.round((group.completedCount / group.totalCount) * 100)
                 : 0;
+            const dueTone = getWorkflowDueTone(group.phases);
 
             return (
               <div
@@ -2311,16 +2394,10 @@ export default function WorkflowsClient() {
                 )}
               >
                 <button
-                  className="hover:bg-muted/50 w-full p-4 text-left transition-colors"
+                  className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
                   onClick={() => toggleGroup(String(group.key))}
                 >
-                  <div className="flex items-start gap-3">
-                    <ChevronRight
-                      className={cn(
-                        "mt-1 size-4 shrink-0 transition-transform duration-200",
-                        isExpanded && "rotate-90",
-                      )}
-                    />
+                  <div className="flex items-start gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
@@ -2358,9 +2435,7 @@ export default function WorkflowsClient() {
                           <div
                             className={cn(
                               "h-full rounded-full transition-all",
-                              progress === 100
-                                ? "bg-emerald-500"
-                                : "bg-blue-500",
+                              WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
                             )}
                             style={{ width: `${progress}%` }}
                           />
@@ -2376,12 +2451,18 @@ export default function WorkflowsClient() {
                         </span>
                       </div>
                     </div>
+                    <ChevronRight
+                      className={cn(
+                        "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
+                        isExpanded && "rotate-90",
+                      )}
+                    />
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t">
-                    <Table>
+                  <div className="border-t px-4 py-3">
+                    <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Phase</TableHead>
@@ -2400,10 +2481,7 @@ export default function WorkflowsClient() {
                             onClick={() => setSelectedId(String(phase.id))}
                           >
                             <TableCell className="font-medium">
-                              <div className="flex items-center gap-1.5">
-                                {String(phase.phaseName)}
-                                <ChevronRight className="text-muted-foreground size-3" />
-                              </div>
+                              {String(phase.phaseName)}
                             </TableCell>
                             <TableCell>
                               <StatusBadge status={phase.status} />
@@ -2477,35 +2555,21 @@ export default function WorkflowsClient() {
               </div>
             );
           })}
+          <WorkflowAutoAdvance
+            enabled={hasMoreGroups}
+            onAdvance={() => {
+              setVisibleCount((current) =>
+                Math.min(current + WORKFLOW_BATCH_SIZE, filteredWorkflows.length),
+              );
+            }}
+            resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+            rootSelector=".workflows-scroll-viewport"
+          />
         </div>
+      </VirtualScrollContainer>
       )}
 
-      {totalPages > 1 && (
-        <Pagination>
-          <PaginationContent>
-            {getPageNumbers(currentPage, totalPages).map((item, index) => (
-              <PaginationItem key={`${String(item)}-${index}`}>
-                {item === "ellipsis" ? (
-                  <PaginationEllipsis />
-                ) : (
-                  <PaginationLink
-                    href="#"
-                    isActive={item === currentPage}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setCurrentPage(item);
-                    }}
-                  >
-                    {item}
-                  </PaginationLink>
-                )}
-              </PaginationItem>
-            ))}
-          </PaginationContent>
-        </Pagination>
-      )}
-
-      {filteredPhases.length > 0 && (
+      {false && filteredPhases.length > 0 && (
         <div className="text-muted-foreground flex items-center gap-4 text-xs">
           <span>
             {
