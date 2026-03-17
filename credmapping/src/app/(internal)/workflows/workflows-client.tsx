@@ -10,10 +10,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  LayoutList,
   Loader2,
   Pause,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   User,
   UserPlus,
@@ -51,6 +53,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from "~/components/ui/sheet";
 import { Dialog, DialogClose, DialogTrigger } from "~/components/ui/dialog";
 import {
@@ -127,6 +130,123 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
 
 const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
+
+type WorkflowViewMode = "list";
+
+type WorkflowsFiltersSheetProps = {
+  workflowType: string;
+  onWorkflowTypeChange: (value: string) => void;
+  agentFilter: string;
+  onAgentFilterChange: (value: string) => void;
+  sortBy: string;
+  onSortByChange: (value: string) => void;
+  agentList: Array<{ id: string | number; name: string | null }>;
+};
+
+function WorkflowsFiltersSheet({
+  workflowType,
+  onWorkflowTypeChange,
+  agentFilter,
+  onAgentFilterChange,
+  sortBy,
+  onSortByChange,
+  agentList,
+}: WorkflowsFiltersSheetProps) {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="h-10">
+          <SlidersHorizontal className="size-4" /> Filters & Sort
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="gap-0">
+        <SheetHeader>
+          <SheetTitle>Workflow Filters and Sort</SheetTitle>
+        </SheetHeader>
+        <div className="border-border space-y-4 border-t px-4 py-3">
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Workflow Type</Label>
+            <Select value={workflowType} onValueChange={onWorkflowTypeChange}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="pfc">PFC</SelectItem>
+                <SelectItem value="state_licenses">State Licenses</SelectItem>
+                <SelectItem value="prelive_pipeline">Pre-Live Pipeline</SelectItem>
+                <SelectItem value="provider_vesta_privileges">
+                  Vesta Privileges
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Agent</Label>
+            <Select value={agentFilter} onValueChange={onAgentFilterChange}>
+              <SelectTrigger className="h-10 w-full">
+                <Users className="text-muted-foreground mr-1.5 size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                <SelectItem value="__me__">My Workflows</SelectItem>
+                {agentList.map((a) => (
+                  <SelectItem key={String(a.id)} value={String(a.id)}>
+                    {String(a.name)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Sort</Label>
+            <Select value={sortBy} onValueChange={onSortByChange}>
+              <SelectTrigger className="h-10 w-full">
+                <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date_assigned_desc">
+                  Date Assigned: Newest
+                </SelectItem>
+                <SelectItem value="date_assigned_asc">
+                  Date Assigned: Oldest
+                </SelectItem>
+                <SelectItem value="date_started_desc">
+                  Date Started: Newest
+                </SelectItem>
+                <SelectItem value="date_started_asc">Date Started: Oldest</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function WorkflowsViewToggle({
+  viewMode,
+  onViewModeChange,
+}: {
+  viewMode: WorkflowViewMode;
+  onViewModeChange: (value: WorkflowViewMode) => void;
+}) {
+  return (
+    <Select value={viewMode} onValueChange={(value) => onViewModeChange(value as WorkflowViewMode)}>
+      <SelectTrigger className="h-10 min-w-[130px]">
+        <LayoutList className="text-muted-foreground mr-1.5 size-3.5" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="list">View: List</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
 
 type DueTone = "critical" | "warning" | "safe";
 
@@ -2076,6 +2196,7 @@ export default function WorkflowsClient() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("date_assigned_desc");
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
   const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -2285,70 +2406,28 @@ export default function WorkflowsClient() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_180px_180px_220px_auto]">
-        <div className="relative min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[260px] flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             className="h-10 w-full pl-9"
-            placeholder="Search workflows, phases, or agents…"
+            placeholder="Search entries..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        <Select value={workflowType} onValueChange={setWorkflowType}>
-          <SelectTrigger className="h-10 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="pfc">PFC</SelectItem>
-            <SelectItem value="state_licenses">State Licenses</SelectItem>
-            <SelectItem value="prelive_pipeline">Pre-Live Pipeline</SelectItem>
-            <SelectItem value="provider_vesta_privileges">
-              Vesta Privileges
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={agentFilter} onValueChange={setAgentFilter}>
-          <SelectTrigger className="h-10 w-full">
-            <Users className="text-muted-foreground mr-1.5 size-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Agents</SelectItem>
-            <SelectItem value="__me__">My Workflows</SelectItem>
-            {agentList.map((a) => (
-              <SelectItem key={String(a.id)} value={String(a.id)}>
-                {String(a.name)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="h-10 w-full">
-            <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date_assigned_desc">
-              Date Assigned: Newest
-            </SelectItem>
-            <SelectItem value="date_assigned_asc">
-              Date Assigned: Oldest
-            </SelectItem>
-            <SelectItem value="date_started_desc">
-              Date Started: Newest
-            </SelectItem>
-            <SelectItem value="date_started_asc">
-              Date Started: Oldest
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex h-10 items-center justify-end gap-2">
+        <div className="ml-auto flex h-10 items-center gap-2">
+          <WorkflowsFiltersSheet
+            workflowType={workflowType}
+            onWorkflowTypeChange={setWorkflowType}
+            agentFilter={agentFilter}
+            onAgentFilterChange={setAgentFilter}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            agentList={agentList}
+          />
+          <WorkflowsViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
           {isFetching && !isLoading && (
             <Loader2 className="text-muted-foreground size-4 animate-spin" />
           )}
