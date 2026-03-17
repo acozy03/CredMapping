@@ -81,7 +81,8 @@ import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 import { Label } from "~/components/ui/label";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
-import { GroupedWorkflowsView } from "./grouped-workflows-view";
+
+import { GroupedWorkflowsView } from "~/components/workflows/grouped-workflows-view";
 
 type WorkflowPhaseInput = {
   phaseName: string;
