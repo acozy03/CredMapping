@@ -131,7 +131,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
 const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
 
-type WorkflowViewMode = "list";
+type WorkflowViewMode = "list" | "grouped";
 
 type WorkflowsFiltersSheetProps = {
   workflowType: string;
@@ -161,7 +161,7 @@ function WorkflowsFiltersSheet({
       </SheetTrigger>
       <SheetContent className="gap-0">
         <SheetHeader>
-          <SheetTitle>Workflow Filters and Sort</SheetTitle>
+          <SheetTitle>Filters & Sort</SheetTitle>
         </SheetHeader>
         <div className="border-border space-y-4 border-t px-4 py-3">
           <div className="space-y-1">
@@ -243,6 +243,9 @@ function WorkflowsViewToggle({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="list">View: List</SelectItem>
+        <SelectItem value="grouped" disabled>
+          View: Grouped (coming soon)
+        </SelectItem>
       </SelectContent>
     </Select>
   );
@@ -2406,18 +2409,18 @@ export default function WorkflowsClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[260px] flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative min-w-0 flex-1 sm:min-w-[260px]">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             className="h-10 w-full pl-9"
-            placeholder="Search entries..."
+            placeholder="Search workflows..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        <div className="ml-auto flex h-10 items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end">
           <WorkflowsFiltersSheet
             workflowType={workflowType}
             onWorkflowTypeChange={setWorkflowType}
