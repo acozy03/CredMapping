@@ -112,6 +112,11 @@ const PFC_PHASES = [
   "Facility Decision",
 ];
 
+function getPfcPhaseSortIndex(phaseName: string): number {
+  const phaseIndex = PFC_PHASES.indexOf(phaseName);
+  return phaseIndex === -1 ? Number.POSITIVE_INFINITY : phaseIndex;
+}
+
 const WORKFLOW_TYPE_LABELS: Record<string, string> = {
   pfc: "PFC",
   state_licenses: "State Licenses",
@@ -2498,6 +2503,14 @@ export default function WorkflowsClient() {
                   ? Math.round((group.completedCount / group.totalCount) * 100)
                   : 0;
               const dueTone = getWorkflowDueTone(group.phases);
+              const expandedPhases =
+                group.workflowType === "pfc"
+                  ? [...group.phases].sort(
+                      (a, b) =>
+                        getPfcPhaseSortIndex(String(a.phaseName)) -
+                        getPfcPhaseSortIndex(String(b.phaseName)),
+                    )
+                  : group.phases;
 
               return (
                 <div
@@ -2590,7 +2603,7 @@ export default function WorkflowsClient() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {group.phases.map((phase) => (
+                          {expandedPhases.map((phase) => (
                             <TableRow
                               key={phase.id}
                               className="hover:bg-muted/50 cursor-pointer"
