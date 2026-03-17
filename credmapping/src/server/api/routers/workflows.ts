@@ -148,12 +148,17 @@ export const workflowsRouter = createTRPCRouter({
       const privIds = rows
         .filter((r) => r.workflowType === "provider_vesta_privileges")
         .map((r) => r.relatedId);
+      const preliveIds = rows
+        .filter((r) => r.workflowType === "prelive_pipeline")
+        .map((r) => r.relatedId);
 
       type PfcContext = {
         id: string;
+        providerId: string | null;
         providerFirstName: string | null;
         providerLastName: string | null;
         providerDegree: string | null;
+        facilityId: string | null;
         facilityName: string | null;
       };
 
@@ -162,9 +167,11 @@ export const workflowsRouter = createTRPCRouter({
         const pfcRows = await ctx.db
           .select({
             id: providerFacilityCredentials.id,
+            providerId: providerFacilityCredentials.providerId,
             providerFirstName: providers.firstName,
             providerLastName: providers.lastName,
             providerDegree: providers.degree,
+            facilityId: providerFacilityCredentials.facilityId,
             facilityName: facilities.name,
           })
           .from(providerFacilityCredentials)
@@ -175,11 +182,15 @@ export const workflowsRouter = createTRPCRouter({
       }
 
       // State licenses context: provider name + state
-      let licenseMap = new Map<string, { provName: string; state: string | null }>();
+      let licenseMap = new Map<
+        string,
+        { providerId: string | null; provName: string; state: string | null }
+      >();
       if (licenseIds.length > 0) {
         const licRows = await ctx.db
           .select({
             id: providerStateLicenses.id,
+            providerId: providerStateLicenses.providerId,
             state: providerStateLicenses.state,
             provFirstName: providers.firstName,
             provLastName: providers.lastName,
@@ -191,6 +202,7 @@ export const workflowsRouter = createTRPCRouter({
           licRows.map((r) => [
             r.id,
             {
+              providerId: r.providerId,
               provName: [r.provFirstName, r.provLastName].filter(Boolean).join(" ") || "Unknown Provider",
               state: r.state,
             },
@@ -199,11 +211,15 @@ export const workflowsRouter = createTRPCRouter({
       }
 
       // Vesta privileges context: provider name
-      let privMap = new Map<string, string>();
+      let privMap = new Map<
+        string,
+        { providerId: string | null; providerName: string }
+      >();
       if (privIds.length > 0) {
         const privRows = await ctx.db
           .select({
             id: providerVestaPrivileges.id,
+            providerId: providerVestaPrivileges.providerId,
             provFirstName: providers.firstName,
             provLastName: providers.lastName,
           })
@@ -213,7 +229,35 @@ export const workflowsRouter = createTRPCRouter({
         privMap = new Map(
           privRows.map((r) => [
             r.id,
-            [r.provFirstName, r.provLastName].filter(Boolean).join(" ") || "Unknown Provider",
+            {
+              providerId: r.providerId,
+              providerName:
+                [r.provFirstName, r.provLastName].filter(Boolean).join(" ") ||
+                "Unknown Provider",
+            },
+          ]),
+        );
+      }
+
+      let preliveMap = new Map<string, { facilityId: string | null; facilityName: string }>();
+      if (preliveIds.length > 0) {
+        const preliveRows = await ctx.db
+          .select({
+            id: facilityPreliveInfo.id,
+            facilityId: facilityPreliveInfo.facilityId,
+            facilityName: facilities.name,
+          })
+          .from(facilityPreliveInfo)
+          .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+          .where(inArray(facilityPreliveInfo.id, preliveIds));
+
+        preliveMap = new Map(
+          preliveRows.map((r) => [
+            r.id,
+            {
+              facilityId: r.facilityId,
+              facilityName: r.facilityName ?? "Unknown Facility",
+            },
           ]),
         );
       }
@@ -226,20 +270,52 @@ export const workflowsRouter = createTRPCRouter({
             : null;
 
         let contextLabel = "";
+        let providerId: string | null = null;
+        let providerName: string | null = null;
+        let facilityId: string | null = null;
+        let facilityName: string | null = null;
+
         if (row.workflowType === "pfc" && pfc) {
-          const provName = [pfc.providerFirstName, pfc.providerLastName]
+          const provName =
+            [pfc.providerFirstName, pfc.providerLastName]
             .filter(Boolean)
-            .join(" ");
-          contextLabel = `${provName ?? "Unknown Provider"} → ${pfc.facilityName ?? "Unknown Facility"}`;        } else if (row.workflowType === "state_licenses") {
+            .join(" ") || "Unknown Provider";
+          providerId = pfc.providerId;
+          providerName = provName;
+          facilityId = pfc.facilityId;
+          facilityName = pfc.facilityName ?? "Unknown Facility";
+          contextLabel = `${provName} → ${facilityName}`;
+        } else if (row.workflowType === "state_licenses") {
           const lic = licenseMap.get(row.relatedId);
-          if (lic) contextLabel = lic.state ? `${lic.provName} \u2013 ${lic.state}` : lic.provName;
+          if (lic) {
+            providerId = lic.providerId;
+            providerName = lic.provName;
+            contextLabel = lic.state ? `${lic.provName} \u2013 ${lic.state}` : lic.provName;
+          }
+        } else if (row.workflowType === "prelive_pipeline") {
+          const prelive = preliveMap.get(row.relatedId);
+          if (prelive) {
+            facilityId = prelive.facilityId;
+            facilityName = prelive.facilityName;
+            contextLabel = prelive.facilityName;
+          }
         } else if (row.workflowType === "provider_vesta_privileges") {
-          contextLabel = privMap.get(row.relatedId) ?? "";        }
+          const priv = privMap.get(row.relatedId);
+          if (priv) {
+            providerId = priv.providerId;
+            providerName = priv.providerName;
+            contextLabel = priv.providerName;
+          }
+        }
 
         return {
           ...row,
           assignedName,
           contextLabel,
+          providerId,
+          providerName,
+          facilityId,
+          facilityName,
           supportingAgentIds: (row.supportingAgents as string[] | null) ?? [],
         };
       });
