@@ -81,6 +81,7 @@ import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 import { Label } from "~/components/ui/label";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
+import { GroupedWorkflowsView } from "./grouped-workflows-view";
 
 type WorkflowPhaseInput = {
   phaseName: string;
@@ -132,14 +133,19 @@ const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
 
 type WorkflowViewMode = "list" | "grouped";
+type WorkflowSortMode =
+  | "date_assigned_desc"
+  | "date_assigned_asc"
+  | "date_started_desc"
+  | "date_started_asc";
 
 type WorkflowsFiltersSheetProps = {
   workflowType: string;
   onWorkflowTypeChange: (value: string) => void;
   agentFilter: string;
   onAgentFilterChange: (value: string) => void;
-  sortBy: string;
-  onSortByChange: (value: string) => void;
+  sortBy: WorkflowSortMode;
+  onSortByChange: (value: WorkflowSortMode) => void;
   agentList: Array<{ id: string | number; name: string | null }>;
 };
 
@@ -165,7 +171,9 @@ function WorkflowsFiltersSheet({
         </SheetHeader>
         <div className="border-border space-y-4 border-t px-4 py-3">
           <div className="space-y-1">
-            <Label className="text-muted-foreground text-xs">Workflow Type</Label>
+            <Label className="text-muted-foreground text-xs">
+              Workflow Type
+            </Label>
             <Select value={workflowType} onValueChange={onWorkflowTypeChange}>
               <SelectTrigger className="h-10 w-full">
                 <SelectValue />
@@ -174,7 +182,9 @@ function WorkflowsFiltersSheet({
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="pfc">PFC</SelectItem>
                 <SelectItem value="state_licenses">State Licenses</SelectItem>
-                <SelectItem value="prelive_pipeline">Pre-Live Pipeline</SelectItem>
+                <SelectItem value="prelive_pipeline">
+                  Pre-Live Pipeline
+                </SelectItem>
                 <SelectItem value="provider_vesta_privileges">
                   Vesta Privileges
                 </SelectItem>
@@ -203,7 +213,12 @@ function WorkflowsFiltersSheet({
 
           <div className="space-y-1">
             <Label className="text-muted-foreground text-xs">Sort</Label>
-            <Select value={sortBy} onValueChange={onSortByChange}>
+            <Select
+              value={sortBy}
+              onValueChange={(value) =>
+                onSortByChange(value as WorkflowSortMode)
+              }
+            >
               <SelectTrigger className="h-10 w-full">
                 <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
                 <SelectValue />
@@ -218,7 +233,9 @@ function WorkflowsFiltersSheet({
                 <SelectItem value="date_started_desc">
                   Date Started: Newest
                 </SelectItem>
-                <SelectItem value="date_started_asc">Date Started: Oldest</SelectItem>
+                <SelectItem value="date_started_asc">
+                  Date Started: Oldest
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -236,16 +253,17 @@ function WorkflowsViewToggle({
   onViewModeChange: (value: WorkflowViewMode) => void;
 }) {
   return (
-    <Select value={viewMode} onValueChange={(value) => onViewModeChange(value as WorkflowViewMode)}>
+    <Select
+      value={viewMode}
+      onValueChange={(value) => onViewModeChange(value as WorkflowViewMode)}
+    >
       <SelectTrigger className="h-10 min-w-[130px]">
         <LayoutList className="text-muted-foreground mr-1.5 size-3.5" />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="list">View: List</SelectItem>
-        <SelectItem value="grouped" disabled>
-          View: Grouped (coming soon)
-        </SelectItem>
+        <SelectItem value="grouped">View: Grouped</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -425,7 +443,10 @@ function WorkflowAutoAdvance({
   }
 
   return (
-    <div ref={sentinelRef} className="flex min-h-12 items-center justify-center">
+    <div
+      ref={sentinelRef}
+      className="flex min-h-12 items-center justify-center"
+    >
       {loading && (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />
@@ -2197,7 +2218,7 @@ export default function WorkflowsClient() {
 
   const [workflowType, setWorkflowType] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("date_assigned_desc");
+  const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
   const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
@@ -2430,7 +2451,10 @@ export default function WorkflowsClient() {
             onSortByChange={setSortBy}
             agentList={agentList}
           />
-          <WorkflowsViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+          <WorkflowsViewToggle
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
           {isFetching && !isLoading && (
             <Loader2 className="text-muted-foreground size-4 animate-spin" />
           )}
@@ -2442,7 +2466,7 @@ export default function WorkflowsClient() {
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
-      ) : filteredWorkflows.length === 0 ? (
+      ) : filteredPhases.length === 0 ? (
         <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
           <Workflow className="text-muted-foreground/50 size-10" />
           <h3 className="mt-4 text-lg font-semibold">No workflows found</h3>
@@ -2452,6 +2476,14 @@ export default function WorkflowsClient() {
               : "Workflow phases are created when providers are assigned to facilities."}
           </p>
         </div>
+      ) : viewMode === "grouped" ? (
+        <GroupedWorkflowsView
+          rows={filteredPhases}
+          sortBy={sortBy}
+          claimPending={selfAssignMutation.isPending}
+          onOpenWorkflow={setSelectedId}
+          onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+        />
       ) : (
         <VirtualScrollContainer
           className="overflow-hidden"
@@ -2459,196 +2491,201 @@ export default function WorkflowsClient() {
           viewportClassName="workflows-scroll-viewport"
         >
           <div className="space-y-3 p-4">
-          {visibleGroups.map((group) => {
-            const isExpanded = expandedGroups.has(String(group.key));
-            const progress =
-              group.totalCount > 0
-                ? Math.round((group.completedCount / group.totalCount) * 100)
-                : 0;
-            const dueTone = getWorkflowDueTone(group.phases);
+            {visibleGroups.map((group) => {
+              const isExpanded = expandedGroups.has(String(group.key));
+              const progress =
+                group.totalCount > 0
+                  ? Math.round((group.completedCount / group.totalCount) * 100)
+                  : 0;
+              const dueTone = getWorkflowDueTone(group.phases);
 
-            return (
-              <div
-                key={group.key}
-                className={cn(
-                  "bg-card overflow-hidden rounded-lg border",
-                  WORKFLOW_TYPE_OUTLINE_STYLES[group.workflowType],
-                )}
-              >
-                <button
-                  className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
-                  onClick={() => toggleGroup(String(group.key))}
+              return (
+                <div
+                  key={group.key}
+                  className={cn(
+                    "bg-card overflow-hidden rounded-lg border",
+                    WORKFLOW_TYPE_OUTLINE_STYLES[group.workflowType],
+                  )}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.18em] uppercase">
-                            {WORKFLOW_TYPE_LABELS[group.workflowType] ??
-                              group.workflowType}
-                          </p>
-                          <h3 className="truncate text-base font-semibold">
-                            {group.contextLabel}
-                          </h3>
-                        </div>
-                        <div className="flex flex-wrap justify-start gap-2 sm:max-w-[50%] sm:justify-end">
-                          {group.hasOverdue && (
-                            <Badge className="h-5 border-red-500/25 bg-red-500/15 py-0 text-[10px] text-red-600">
-                              OVERDUE
-                            </Badge>
-                          )}
-                          {group.hasBlocked && (
-                            <Badge className="h-5 border-amber-500/25 bg-amber-500/15 py-0 text-[10px] text-amber-600">
-                              BLOCKED
-                            </Badge>
-                          )}
-                          {group.incidentCount > 0 && (
-                            <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 py-0 text-[10px] text-orange-600">
-                              <AlertTriangle className="size-2.5" />
-                              {group.incidentCount} incident
-                              {group.incidentCount !== 1 ? "s" : ""}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-3">
-                        <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all",
-                              WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
+                  <button
+                    className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
+                    onClick={() => toggleGroup(String(group.key))}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.18em] uppercase">
+                              {WORKFLOW_TYPE_LABELS[group.workflowType] ??
+                                group.workflowType}
+                            </p>
+                            <h3 className="truncate text-base font-semibold">
+                              {group.contextLabel}
+                            </h3>
+                          </div>
+                          <div className="flex flex-wrap justify-start gap-2 sm:max-w-[50%] sm:justify-end">
+                            {group.hasOverdue && (
+                              <Badge className="h-5 border-red-500/25 bg-red-500/15 py-0 text-[10px] text-red-600">
+                                OVERDUE
+                              </Badge>
                             )}
-                            style={{ width: `${progress}%` }}
-                          />
+                            {group.hasBlocked && (
+                              <Badge className="h-5 border-amber-500/25 bg-amber-500/15 py-0 text-[10px] text-amber-600">
+                                BLOCKED
+                              </Badge>
+                            )}
+                            {group.incidentCount > 0 && (
+                              <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 py-0 text-[10px] text-orange-600">
+                                <AlertTriangle className="size-2.5" />
+                                {group.incidentCount} incident
+                                {group.incidentCount !== 1 ? "s" : ""}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-muted-foreground shrink-0 text-xs">
-                          {group.completedCount}/{group.totalCount} phase
-                          {group.totalCount !== 1 ? "s" : ""} done · Updated{" "}
-                          {formatDate(
-                            group.latestUpdate
-                              ? String(group.latestUpdate)
-                              : undefined,
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={cn(
-                        "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
-                        isExpanded && "rotate-90",
-                      )}
-                    />
-                  </div>
-                </button>
 
-                {isExpanded && (
-                  <div className="border-t px-4 py-3">
-                    <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Phase</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Assigned</TableHead>
-                          <TableHead>Start</TableHead>
-                          <TableHead>Due</TableHead>
-                          <TableHead className="text-right">Updated</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {group.phases.map((phase) => (
-                          <TableRow
-                            key={phase.id}
-                            className="hover:bg-muted/50 cursor-pointer"
-                            onClick={() => setSelectedId(String(phase.id))}
-                          >
-                            <TableCell className="font-medium">
-                              {String(phase.phaseName)}
-                            </TableCell>
-                            <TableCell>
-                              <StatusBadge status={phase.status} />
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {phase.assignedName ? (
-                                <>
-                                  {phase.assignedName}
-                                  {phase.supportingAgentIds.length > 0 && (
-                                    <span className="ml-1 text-[10px] opacity-60">
-                                      +{phase.supportingAgentIds.length}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                                  disabled={selfAssignMutation.isPending}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selfAssignMutation.mutate({
-                                      id: String(phase.id),
-                                    });
-                                  }}
-                                >
-                                  <UserPlus className="size-3" /> Claim
-                                </Button>
+                        <div className="mt-3 flex items-center gap-3">
+                          <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
                               )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
-                              {formatDate(
-                                phase.startDate
-                                  ? String(phase.startDate)
-                                  : undefined,
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
-                              {phase.dueDate ? (
-                                <span
-                                  className={
-                                    new Date(String(phase.dueDate)) <
-                                      new Date() &&
-                                    !(phase.status ?? "")
-                                      .toLowerCase()
-                                      .includes("complet")
-                                      ? "font-medium text-red-500"
-                                      : ""
-                                  }
-                                >
-                                  {formatDate(String(phase.dueDate))}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-right text-xs">
-                              {formatDate(
-                                phase.updatedAt
-                                  ? String(phase.updatedAt)
-                                  : undefined,
-                              )}
-                            </TableCell>
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <span className="text-muted-foreground shrink-0 text-xs">
+                            {group.completedCount}/{group.totalCount} phase
+                            {group.totalCount !== 1 ? "s" : ""} done · Updated{" "}
+                            {formatDate(
+                              group.latestUpdate
+                                ? String(group.latestUpdate)
+                                : undefined,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight
+                        className={cn(
+                          "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
+                          isExpanded && "rotate-90",
+                        )}
+                      />
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t px-4 py-3">
+                      <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Phase</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Assigned</TableHead>
+                            <TableHead>Start</TableHead>
+                            <TableHead>Due</TableHead>
+                            <TableHead className="text-right">
+                              Updated
+                            </TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <WorkflowAutoAdvance
-            enabled={hasMoreGroups}
-            onAdvance={() => {
-              setVisibleCount((current) =>
-                Math.min(current + WORKFLOW_BATCH_SIZE, filteredWorkflows.length),
+                        </TableHeader>
+                        <TableBody>
+                          {group.phases.map((phase) => (
+                            <TableRow
+                              key={phase.id}
+                              className="hover:bg-muted/50 cursor-pointer"
+                              onClick={() => setSelectedId(String(phase.id))}
+                            >
+                              <TableCell className="font-medium">
+                                {String(phase.phaseName)}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={phase.status} />
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {phase.assignedName ? (
+                                  <>
+                                    {phase.assignedName}
+                                    {phase.supportingAgentIds.length > 0 && (
+                                      <span className="ml-1 text-[10px] opacity-60">
+                                        +{phase.supportingAgentIds.length}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                    disabled={selfAssignMutation.isPending}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      selfAssignMutation.mutate({
+                                        id: String(phase.id),
+                                      });
+                                    }}
+                                  >
+                                    <UserPlus className="size-3" /> Claim
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {formatDate(
+                                  phase.startDate
+                                    ? String(phase.startDate)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {phase.dueDate ? (
+                                  <span
+                                    className={
+                                      new Date(String(phase.dueDate)) <
+                                        new Date() &&
+                                      !(phase.status ?? "")
+                                        .toLowerCase()
+                                        .includes("complet")
+                                        ? "font-medium text-red-500"
+                                        : ""
+                                    }
+                                  >
+                                    {formatDate(String(phase.dueDate))}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-right text-xs">
+                                {formatDate(
+                                  phase.updatedAt
+                                    ? String(phase.updatedAt)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
               );
-            }}
-            resetKey={`${visibleCount}-${filteredWorkflows.length}`}
-            rootSelector=".workflows-scroll-viewport"
-          />
-        </div>
-      </VirtualScrollContainer>
+            })}
+            <WorkflowAutoAdvance
+              enabled={hasMoreGroups}
+              onAdvance={() => {
+                setVisibleCount((current) =>
+                  Math.min(
+                    current + WORKFLOW_BATCH_SIZE,
+                    filteredWorkflows.length,
+                  ),
+                );
+              }}
+              resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+              rootSelector=".workflows-scroll-viewport"
+            />
+          </div>
+        </VirtualScrollContainer>
       )}
 
       {false && filteredPhases.length > 0 && (
