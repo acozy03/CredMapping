@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "~/trpc/react";
+import { api, type RouterOutputs } from "~/trpc/react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -104,6 +104,8 @@ type WorkflowPhaseInput = {
 type WorkflowPhaseDraft = WorkflowPhaseInput & {
   clientKey: string;
 };
+
+type WorkflowRow = RouterOutputs["workflows"]["list"][number];
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 
@@ -898,6 +900,7 @@ function WorkflowDetailSheet({
     onSuccess: () => {
       toast.success("Workflow updated.");
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
     },
     onError: (e) => toast.error(String(e.message)),
@@ -907,6 +910,7 @@ function WorkflowDetailSheet({
     onSuccess: () => {
       toast.success("Workflow assigned to you.");
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
     },
     onError: (e) => toast.error(String(e.message)),
@@ -1352,6 +1356,7 @@ function AddWorkflowDialog() {
       toast.success("New relationship and all workflow phases created!");
       setOpen(false);
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
       resetForm();
     },
     onError: (e) => toast.error(String(e.message)),
@@ -2210,9 +2215,9 @@ export default function WorkflowsClient() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const {
-    data: workflows = [],
-    isLoading,
-    isFetching,
+    data: listWorkflows = [],
+    isLoading: isListLoading,
+    isFetching: isListFetching,
   } = api.workflows.list.useQuery(
     {
       workflowType: workflowType as
@@ -2229,7 +2234,28 @@ export default function WorkflowsClient() {
       limit: WORKFLOW_FETCH_LIMIT,
       offset: 0,
     },
-    { refetchOnWindowFocus: false },
+    { refetchOnWindowFocus: false, enabled: viewMode === "list" },
+  );
+
+  const {
+    data: groupedViewWorkflows = [],
+    isLoading: isGroupedLoading,
+    isFetching: isGroupedFetching,
+  } = api.workflows.listGrouped.useQuery(
+    {
+      workflowType: workflowType as
+        | "all"
+        | "pfc"
+        | "state_licenses"
+        | "prelive_pipeline"
+        | "provider_vesta_privileges",
+      assignedToMe: agentFilter === "__me__",
+      assignedToAgent:
+        agentFilter !== "all" && agentFilter !== "__me__"
+          ? agentFilter
+          : undefined,
+    },
+    { refetchOnWindowFocus: false, enabled: viewMode === "grouped" },
   );
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
@@ -2257,9 +2283,15 @@ export default function WorkflowsClient() {
     onSuccess: () => {
       toast.success("Workflow assigned to you.");
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
     },
     onError: (e) => toast.error(String(e.message)),
   });
+
+  const activeRows: WorkflowRow[] =
+    viewMode === "grouped" ? groupedViewWorkflows : listWorkflows;
+  const isLoading = viewMode === "grouped" ? isGroupedLoading : isListLoading;
+  const isFetching = viewMode === "grouped" ? isGroupedFetching : isListFetching;
 
   const groupedWorkflows = useMemo(() => {
     const groups = new Map<
@@ -2269,7 +2301,7 @@ export default function WorkflowsClient() {
         workflowType: string;
         contextLabel: string;
         relatedId: string;
-        phases: typeof workflows;
+        phases: WorkflowRow[];
         completedCount: number;
         totalCount: number;
         incidentCount: number;
@@ -2281,7 +2313,7 @@ export default function WorkflowsClient() {
       }
     >();
 
-    for (const wf of workflows) {
+    for (const wf of activeRows) {
       const key = `${wf.workflowType}:${wf.relatedId}`;
       const statusLower = (wf.status ?? "").toLowerCase();
       const isDone = isCompletedStatus(wf.status);
@@ -2342,7 +2374,7 @@ export default function WorkflowsClient() {
     }
 
     return Array.from(groups.values());
-  }, [workflows]);
+  }, [activeRows]);
 
   const filteredWorkflows = useMemo(() => {
     const trimmedSearch = search.trim().toLowerCase();

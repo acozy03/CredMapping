@@ -321,6 +321,279 @@ export const workflowsRouter = createTRPCRouter({
       });
     }),
 
+  /** List workflow phases for grouped view (provider/facility grouping, no row pagination). */
+  listGrouped: protectedProcedure
+    .input(
+      z.object({
+        workflowType: z
+          .enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges", "all"])
+          .default("all"),
+        status: z.string().optional(),
+        assignedToMe: z.boolean().default(false),
+        assignedToAgent: z.string().uuid().optional(),
+        hasIncidents: z.boolean().default(false),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const conditions = [];
+
+      if (input.workflowType !== "all") {
+        conditions.push(eq(workflowPhases.workflowType, input.workflowType));
+      }
+      if (input.status && input.status !== "all") {
+        conditions.push(eq(workflowPhases.status, input.status));
+      }
+
+      if (input.assignedToMe && ctx.user) {
+        const actor = await resolveAgentId(ctx.db, ctx.user.id);
+        if (actor) {
+          const myRelated = ctx.db
+            .selectDistinct({ relatedId: workflowPhases.relatedId })
+            .from(workflowPhases)
+            .where(
+              or(
+                eq(workflowPhases.agentAssigned, actor.id),
+                sql`${workflowPhases.supportingAgents}::jsonb @> ${JSON.stringify([actor.id])}::jsonb`,
+              ),
+            );
+          conditions.push(inArray(workflowPhases.relatedId, myRelated));
+        } else {
+          return [];
+        }
+      }
+
+      if (input.assignedToAgent) {
+        const agentId = input.assignedToAgent;
+        const agentRelated = ctx.db
+          .selectDistinct({ relatedId: workflowPhases.relatedId })
+          .from(workflowPhases)
+          .where(
+            or(
+              eq(workflowPhases.agentAssigned, agentId),
+              sql`${workflowPhases.supportingAgents}::jsonb @> ${JSON.stringify([agentId])}::jsonb`,
+            ),
+          );
+        conditions.push(inArray(workflowPhases.relatedId, agentRelated));
+      }
+
+      if (input.hasIncidents) {
+        conditions.push(
+          exists(
+            ctx.db
+              .select({ one: sql`1` })
+              .from(incidentLogs)
+              .where(eq(incidentLogs.workflowID, workflowPhases.id)),
+          ),
+        );
+      }
+
+      const rows = await ctx.db
+        .select({
+          id: workflowPhases.id,
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          phaseName: workflowPhases.phaseName,
+          status: workflowPhases.status,
+          startDate: workflowPhases.startDate,
+          dueDate: workflowPhases.dueDate,
+          completedAt: workflowPhases.completedAt,
+          notes: workflowPhases.notes,
+          createdAt: workflowPhases.createdAt,
+          updatedAt: workflowPhases.updatedAt,
+          agentAssigned: workflowPhases.agentAssigned,
+          supportingAgents: workflowPhases.supportingAgents,
+          assignedFirstName: agents.firstName,
+          assignedLastName: agents.lastName,
+          incidentCount: sql<number>`(
+            SELECT count(*)::int FROM ${incidentLogs}
+            WHERE ${incidentLogs.workflowID} = ${workflowPhases.id}
+          )`.as("incident_count"),
+        })
+        .from(workflowPhases)
+        .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(workflowPhases.updatedAt));
+
+      const pfcIds = rows
+        .filter((r) => r.workflowType === "pfc")
+        .map((r) => r.relatedId);
+      const licenseIds = rows
+        .filter((r) => r.workflowType === "state_licenses")
+        .map((r) => r.relatedId);
+      const privIds = rows
+        .filter((r) => r.workflowType === "provider_vesta_privileges")
+        .map((r) => r.relatedId);
+      const preliveIds = rows
+        .filter((r) => r.workflowType === "prelive_pipeline")
+        .map((r) => r.relatedId);
+
+      type PfcContext = {
+        id: string;
+        providerId: string | null;
+        providerFirstName: string | null;
+        providerLastName: string | null;
+        providerDegree: string | null;
+        facilityId: string | null;
+        facilityName: string | null;
+      };
+
+      let pfcMap = new Map<string, PfcContext>();
+      if (pfcIds.length > 0) {
+        const pfcRows = await ctx.db
+          .select({
+            id: providerFacilityCredentials.id,
+            providerId: providerFacilityCredentials.providerId,
+            providerFirstName: providers.firstName,
+            providerLastName: providers.lastName,
+            providerDegree: providers.degree,
+            facilityId: providerFacilityCredentials.facilityId,
+            facilityName: facilities.name,
+          })
+          .from(providerFacilityCredentials)
+          .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+          .leftJoin(facilities, eq(providerFacilityCredentials.facilityId, facilities.id))
+          .where(inArray(providerFacilityCredentials.id, pfcIds));
+        pfcMap = new Map(pfcRows.map((r) => [r.id, r]));
+      }
+
+      let licenseMap = new Map<
+        string,
+        { providerId: string | null; provName: string; state: string | null }
+      >();
+      if (licenseIds.length > 0) {
+        const licRows = await ctx.db
+          .select({
+            id: providerStateLicenses.id,
+            providerId: providerStateLicenses.providerId,
+            state: providerStateLicenses.state,
+            provFirstName: providers.firstName,
+            provLastName: providers.lastName,
+          })
+          .from(providerStateLicenses)
+          .leftJoin(providers, eq(providerStateLicenses.providerId, providers.id))
+          .where(inArray(providerStateLicenses.id, licenseIds));
+        licenseMap = new Map(
+          licRows.map((r) => [
+            r.id,
+            {
+              providerId: r.providerId,
+              provName: [r.provFirstName, r.provLastName].filter(Boolean).join(" ") || "Unknown Provider",
+              state: r.state,
+            },
+          ]),
+        );
+      }
+
+      let privMap = new Map<
+        string,
+        { providerId: string | null; providerName: string }
+      >();
+      if (privIds.length > 0) {
+        const privRows = await ctx.db
+          .select({
+            id: providerVestaPrivileges.id,
+            providerId: providerVestaPrivileges.providerId,
+            provFirstName: providers.firstName,
+            provLastName: providers.lastName,
+          })
+          .from(providerVestaPrivileges)
+          .leftJoin(providers, eq(providerVestaPrivileges.providerId, providers.id))
+          .where(inArray(providerVestaPrivileges.id, privIds));
+        privMap = new Map(
+          privRows.map((r) => [
+            r.id,
+            {
+              providerId: r.providerId,
+              providerName:
+                [r.provFirstName, r.provLastName].filter(Boolean).join(" ") ||
+                "Unknown Provider",
+            },
+          ]),
+        );
+      }
+
+      let preliveMap = new Map<string, { facilityId: string | null; facilityName: string }>();
+      if (preliveIds.length > 0) {
+        const preliveRows = await ctx.db
+          .select({
+            id: facilityPreliveInfo.id,
+            facilityId: facilityPreliveInfo.facilityId,
+            facilityName: facilities.name,
+          })
+          .from(facilityPreliveInfo)
+          .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+          .where(inArray(facilityPreliveInfo.id, preliveIds));
+
+        preliveMap = new Map(
+          preliveRows.map((r) => [
+            r.id,
+            {
+              facilityId: r.facilityId,
+              facilityName: r.facilityName ?? "Unknown Facility",
+            },
+          ]),
+        );
+      }
+
+      return rows.map((row) => {
+        const pfc = pfcMap.get(row.relatedId);
+        const assignedName =
+          row.assignedFirstName || row.assignedLastName
+            ? `${row.assignedFirstName ?? ""} ${row.assignedLastName ?? ""}`.trim()
+            : null;
+
+        let contextLabel = "";
+        let providerId: string | null = null;
+        let providerName: string | null = null;
+        let facilityId: string | null = null;
+        let facilityName: string | null = null;
+
+        if (row.workflowType === "pfc" && pfc) {
+          const provName =
+            [pfc.providerFirstName, pfc.providerLastName]
+              .filter(Boolean)
+              .join(" ") || "Unknown Provider";
+          providerId = pfc.providerId;
+          providerName = provName;
+          facilityId = pfc.facilityId;
+          facilityName = pfc.facilityName ?? "Unknown Facility";
+          contextLabel = `${provName} → ${facilityName}`;
+        } else if (row.workflowType === "state_licenses") {
+          const lic = licenseMap.get(row.relatedId);
+          if (lic) {
+            providerId = lic.providerId;
+            providerName = lic.provName;
+            contextLabel = lic.state ? `${lic.provName} \u2013 ${lic.state}` : lic.provName;
+          }
+        } else if (row.workflowType === "prelive_pipeline") {
+          const prelive = preliveMap.get(row.relatedId);
+          if (prelive) {
+            facilityId = prelive.facilityId;
+            facilityName = prelive.facilityName;
+            contextLabel = prelive.facilityName;
+          }
+        } else if (row.workflowType === "provider_vesta_privileges") {
+          const priv = privMap.get(row.relatedId);
+          if (priv) {
+            providerId = priv.providerId;
+            providerName = priv.providerName;
+            contextLabel = priv.providerName;
+          }
+        }
+
+        return {
+          ...row,
+          assignedName,
+          contextLabel,
+          providerId,
+          providerName,
+          facilityId,
+          facilityName,
+          supportingAgentIds: (row.supportingAgents as string[] | null) ?? [],
+        };
+      });
+    }),
+
   /** Get a single workflow phase with full details */
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
