@@ -138,12 +138,18 @@ function getRelatedWorkflowSortTimestamp(
 ) {
   const isStartedSort =
     sortBy === "date_started_asc" || sortBy === "date_started_desc";
+  const isAscendingSort =
+    sortBy === "date_started_asc" || sortBy === "date_assigned_asc";
 
-  return group.rows.reduce((maxTimestamp, row) => {
+  return group.rows.reduce((candidateTimestamp, row) => {
     const value = isStartedSort ? row.startDate : row.createdAt;
     const timestamp = value ? new Date(value).getTime() : 0;
-    return Math.max(maxTimestamp, Number.isNaN(timestamp) ? 0 : timestamp);
-  }, 0);
+    const normalizedTimestamp = Number.isNaN(timestamp) ? 0 : timestamp;
+
+    return isAscendingSort
+      ? Math.min(candidateTimestamp, normalizedTimestamp)
+      : Math.max(candidateTimestamp, normalizedTimestamp);
+  }, isAscendingSort ? Number.POSITIVE_INFINITY : 0);
 }
 
 function formatDate(d: string | Date | null | undefined): string {
