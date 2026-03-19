@@ -332,7 +332,6 @@ export const workflowsRouter = createTRPCRouter({
         assignedToMe: z.boolean().default(false),
         assignedToAgent: z.string().uuid().optional(),
         hasIncidents: z.boolean().default(false),
-        search: z.string().optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -386,10 +385,6 @@ export const workflowsRouter = createTRPCRouter({
               .where(eq(incidentLogs.workflowID, workflowPhases.id)),
           ),
         );
-      }
-
-      if (input.search) {
-        conditions.push(ilike(workflowPhases.phaseName, `%${input.search}%`));
       }
 
       const rows = await ctx.db
