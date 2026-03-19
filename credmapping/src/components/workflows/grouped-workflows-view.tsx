@@ -29,7 +29,6 @@ import {
 } from "~/components/ui/table";
 import {
   formatDate,
-  isCompletedStatus,
   isOverdue,
   WORKFLOW_TYPE_LABELS,
   type WorkflowSortMode,
