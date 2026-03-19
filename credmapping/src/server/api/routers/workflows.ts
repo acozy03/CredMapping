@@ -328,7 +328,6 @@ export const workflowsRouter = createTRPCRouter({
         workflowType: z
           .enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges", "all"])
           .default("all"),
-        status: z.string().optional(),
         assignedToMe: z.boolean().default(false),
         assignedToAgent: z.string().uuid().optional(),
         hasIncidents: z.boolean().default(false),
@@ -344,9 +343,6 @@ export const workflowsRouter = createTRPCRouter({
 
       if (input.workflowType !== "all") {
         conditions.push(eq(workflowPhases.workflowType, input.workflowType));
-      }
-      if (input.status && input.status !== "all") {
-        conditions.push(eq(workflowPhases.status, input.status));
       }
 
       if (input.assignedToMe && ctx.user) {
