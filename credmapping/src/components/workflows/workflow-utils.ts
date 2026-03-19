@@ -14,6 +14,7 @@ export const WORKFLOW_TYPE_LABELS: Record<string, string> = {
 export function formatDate(d: string | Date | null | undefined): string {
   if (!d) return "—";
   const date = typeof d === "string" ? new Date(d) : d;
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",

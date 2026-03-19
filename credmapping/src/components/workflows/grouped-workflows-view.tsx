@@ -356,7 +356,7 @@ function GroupedWorkflowsDetailPane({
                 <AccordionItem
                   key={relatedGroup.key}
                   value={relatedGroup.key}
-                  className="bg-muted/20 rounded-md border px-3"
+                  className="bg-muted/20 rounded-md border last:border-b px-3"
                 >
                   <AccordionTrigger className="py-3 hover:no-underline">
                     <div className="min-w-0 text-left">
