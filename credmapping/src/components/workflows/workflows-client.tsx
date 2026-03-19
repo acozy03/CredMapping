@@ -164,6 +164,12 @@ function WorkflowsFiltersSheet({
   onSortByChange,
   agentList,
 }: WorkflowsFiltersSheetProps) {
+  const resetFilters = () => {
+    onWorkflowTypeChange("all");
+    onAgentFilterChange("all");
+    onSortByChange("date_assigned_desc");
+  };
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -245,6 +251,13 @@ function WorkflowsFiltersSheet({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="mt-auto px-4 pb-4">
+          <Separator className="mb-4" />
+          <Button variant="outline" onClick={resetFilters} className="w-full">
+            Reset filters
+          </Button>
         </div>
       </SheetContent>
     </Sheet>
