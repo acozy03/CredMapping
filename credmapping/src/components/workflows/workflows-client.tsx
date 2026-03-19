@@ -140,7 +140,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_PAGE_SIZE = 60;
+const WORKFLOW_PAGE_SIZE = 24;
 
 type WorkflowViewMode = "list" | "grouped";
 
@@ -2196,7 +2196,7 @@ export default function WorkflowsClient() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
+  const [viewMode, setViewMode] = useState<WorkflowViewMode>("grouped");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [pageOffset, setPageOffset] = useState(0);
@@ -2225,11 +2225,11 @@ export default function WorkflowsClient() {
     },
   );
 
-  const pageWorkflows = workflowsQuery.data;
+  const pageData = workflowsQuery.data;
   const isLoading = workflowsQuery.isLoading;
   const isFetching = workflowsQuery.isFetching;
 
-  type WorkflowListRow = NonNullable<typeof workflowsQuery.data>[number];
+  type WorkflowListRow = NonNullable<typeof workflowsQuery.data>["rows"][number];
 
   const [loadedWorkflows, setLoadedWorkflows] = useState<WorkflowListRow[]>([]);
   const [hasMorePages, setHasMorePages] = useState(true);
@@ -2270,7 +2270,7 @@ export default function WorkflowsClient() {
   }, [workflowType, agentFilter, search]);
 
   useEffect(() => {
-    if (!pageWorkflows) return;
+    if (!pageData) return;
 
     const seen = new Set<string>();
     const deduped: WorkflowListRow[] = [];
@@ -2281,7 +2281,7 @@ export default function WorkflowsClient() {
         deduped.push(row);
       }
 
-      for (const row of pageWorkflows) {
+      for (const row of pageData.rows) {
         const id = String(row.id);
         if (seen.has(id)) continue;
         seen.add(id);
@@ -2291,8 +2291,8 @@ export default function WorkflowsClient() {
       return deduped;
     });
 
-    setHasMorePages(pageWorkflows.length === WORKFLOW_PAGE_SIZE);
-  }, [pageWorkflows]);
+    setHasMorePages(pageData.hasMoreProviders);
+  }, [pageData]);
 
   const workflows = loadedWorkflows;
 
