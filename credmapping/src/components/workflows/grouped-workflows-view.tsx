@@ -92,6 +92,15 @@ function sortRows(rows: WorkflowListRow[], sortBy: WorkflowSortMode) {
   });
 }
 
+function isCompletedStatus(status: string | null | undefined) {
+  const normalized = (status ?? "").toLowerCase();
+  return (
+    normalized.includes("complet") ||
+    normalized === "done" ||
+    normalized === "approved"
+  );
+}
+
 function getRelatedWorkflowLabel(row: WorkflowListRow) {
   const typeLabel = getWorkflowTypeLabel(String(row.workflowType));
 
@@ -121,6 +130,20 @@ function getRelatedWorkflowLabel(row: WorkflowListRow) {
 function getRelatedWorkflowSubtitle(group: RelatedWorkflowGroup) {
   const workflowWord = group.rows.length === 1 ? "workflow" : "workflows";
   return `${group.rows.length} ${workflowWord}`;
+}
+
+function getRelatedWorkflowSortTimestamp(
+  group: RelatedWorkflowGroup,
+  sortBy: WorkflowSortMode,
+) {
+  const isStartedSort =
+    sortBy === "date_started_asc" || sortBy === "date_started_desc";
+
+  return group.rows.reduce((maxTimestamp, row) => {
+    const value = isStartedSort ? row.startDate : row.createdAt;
+    const timestamp = value ? new Date(value).getTime() : 0;
+    return Math.max(maxTimestamp, Number.isNaN(timestamp) ? 0 : timestamp);
+  }, 0);
 }
 
 function formatDate(d: string | Date | null | undefined): string {
@@ -272,15 +295,38 @@ function GroupedWorkflowsDetailPane({
         subtitle: getRelatedWorkflowSubtitle(relatedGroup),
         rows: sortRows(relatedGroup.rows, sortBy),
       }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .sort((a, b) => {
+        const aTimestamp = getRelatedWorkflowSortTimestamp(a, sortBy);
+        const bTimestamp = getRelatedWorkflowSortTimestamp(b, sortBy);
+
+        if (sortBy === "date_started_asc" || sortBy === "date_assigned_asc") {
+          if (aTimestamp !== bTimestamp) return aTimestamp - bTimestamp;
+        } else if (aTimestamp !== bTimestamp) {
+          return bTimestamp - aTimestamp;
+        }
+
+        return a.label.localeCompare(b.label);
+      });
   }, [rows, sortBy]);
 
   const [openRelatedKeys, setOpenRelatedKeys] = useState<string[]>([]);
 
   useEffect(() => {
-    setOpenRelatedKeys(
-      relatedWorkflowGroups.map((relatedGroup) => relatedGroup.key),
-    );
+    setOpenRelatedKeys((currentOpenKeys) => {
+      const availableKeys = new Set(
+        relatedWorkflowGroups.map((relatedGroup) => relatedGroup.key),
+      );
+      const preservedOpenKeys = currentOpenKeys.filter((key) =>
+        availableKeys.has(key),
+      );
+
+      const knownKeys = new Set(currentOpenKeys);
+      const newlyAvailableKeys = relatedWorkflowGroups
+        .map((relatedGroup) => relatedGroup.key)
+        .filter((key) => !knownKeys.has(key));
+
+      return [...preservedOpenKeys, ...newlyAvailableKeys];
+    });
   }, [relatedWorkflowGroups]);
 
   return (
@@ -360,9 +406,7 @@ function GroupedWorkflowsDetailPane({
                           const isOverdue =
                             !!row.dueDate &&
                             new Date(String(row.dueDate)) < new Date() &&
-                            !(row.status ?? "")
-                              .toLowerCase()
-                              .includes("complet");
+                            !isCompletedStatus(row.status);
 
                           return (
                             <TableRow
