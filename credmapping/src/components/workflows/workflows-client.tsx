@@ -105,7 +105,7 @@ type WorkflowPhaseDraft = WorkflowPhaseInput & {
   clientKey: string;
 };
 
-type WorkflowRow = RouterOutputs["workflows"]["list"][number];
+type WorkflowRow = RouterOutputs["workflows"]["list"]["rows"][number];
 type GroupedWorkflowRow = RouterOutputs["workflows"]["listGrouped"]["rows"][number];
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -143,8 +143,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_BATCH_SIZE = 8;
-const WORKFLOW_FETCH_LIMIT = 1000;
+const WORKFLOW_PAGE_SIZE = 60;
 const GROUPED_PROVIDER_PAGE_SIZE = 12;
 
 type WorkflowViewMode = "list" | "grouped";
@@ -2212,15 +2211,17 @@ export default function WorkflowsClient() {
   const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
-  const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const {
-    data: listWorkflows = [],
+    data: listQueryData,
     isLoading: isListLoading,
     isFetching: isListFetching,
-  } = api.workflows.list.useQuery(
+    isFetchingNextPage: isListFetchingNextPage,
+    hasNextPage: listHasMore,
+    fetchNextPage: fetchMoreListRows,
+  } = api.workflows.list.useInfiniteQuery(
     {
       workflowType: workflowType as
         | "all"
@@ -2233,10 +2234,15 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
-      limit: WORKFLOW_FETCH_LIMIT,
-      offset: 0,
+      search: search.trim() || undefined,
+      limit: WORKFLOW_PAGE_SIZE,
     },
-    { refetchOnWindowFocus: false, enabled: viewMode === "list" },
+    {
+      refetchOnWindowFocus: false,
+      enabled: viewMode === "list",
+      initialCursor: 0,
+      getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+    },
   );
 
   const groupedBaseInput = useMemo(
@@ -2313,8 +2319,17 @@ export default function WorkflowsClient() {
     return Array.from(dedupedRows.values());
   }, [groupedQueryData]);
 
+  const listRows = useMemo<WorkflowRow[]>(() => {
+    const mergedRows = listQueryData?.pages.flatMap((page) => page.rows) ?? [];
+    const dedupedRows = new Map<string, WorkflowRow>();
+    for (const row of mergedRows) {
+      dedupedRows.set(String(row.id), row);
+    }
+    return Array.from(dedupedRows.values());
+  }, [listQueryData]);
+
   const activeRows: WorkflowRow[] =
-    viewMode === "grouped" ? groupedRows : listWorkflows;
+    viewMode === "grouped" ? groupedRows : listRows;
   const isLoading = viewMode === "grouped" ? isGroupedLoading : isListLoading;
   const isFetching = viewMode === "grouped" ? isGroupedFetching : isListFetching;
 
@@ -2402,36 +2417,10 @@ export default function WorkflowsClient() {
   }, [activeRows]);
 
   const filteredWorkflows = useMemo(() => {
-    const trimmedSearch =
-      viewMode === "grouped" ? "" : search.trim().toLowerCase();
-
-    const matchingGroups = trimmedSearch
-      ? groupedWorkflows.filter((group) => {
-          const matchesContext = group.contextLabel
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesType = (
-            WORKFLOW_TYPE_LABELS[group.workflowType] ?? group.workflowType
-          )
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesPhase = group.phases.some((phase) => {
-            const phaseName = String(phase.phaseName ?? "").toLowerCase();
-            const assignedName = String(phase.assignedName ?? "").toLowerCase();
-            return (
-              phaseName.includes(trimmedSearch) ||
-              assignedName.includes(trimmedSearch)
-            );
-          });
-
-          return matchesContext || matchesType || matchesPhase;
-        })
-      : groupedWorkflows;
-
     const getTimestamp = (value: string | Date | null) =>
       value ? new Date(value).getTime() : 0;
 
-    return [...matchingGroups].sort((a, b) => {
+    return [...groupedWorkflows].sort((a, b) => {
       const aStarted = getTimestamp(a.latestStartDate);
       const bStarted = getTimestamp(b.latestStartDate);
       const aAssigned = getTimestamp(a.latestAssignedDate);
@@ -2442,23 +2431,16 @@ export default function WorkflowsClient() {
       if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
       return bAssigned - aAssigned;
     });
-  }, [groupedWorkflows, search, sortBy, viewMode]);
+  }, [groupedWorkflows, sortBy]);
 
   const filteredPhases = useMemo(
     () => filteredWorkflows.flatMap((group) => group.phases),
     [filteredWorkflows],
   );
 
-  useEffect(() => {
-    setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, search, sortBy]);
+  const visibleGroups = filteredWorkflows;
 
-  const visibleGroups = useMemo(
-    () => filteredWorkflows.slice(0, visibleCount),
-    [filteredWorkflows, visibleCount],
-  );
-
-  const hasMoreGroups = visibleGroups.length < filteredWorkflows.length;
+  const hasMoreGroups = Boolean(listHasMore);
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -2752,14 +2734,10 @@ export default function WorkflowsClient() {
             <WorkflowAutoAdvance
               enabled={hasMoreGroups}
               onAdvance={() => {
-                setVisibleCount((current) =>
-                  Math.min(
-                    current + WORKFLOW_BATCH_SIZE,
-                    filteredWorkflows.length,
-                  ),
-                );
+                if (!listHasMore || isListFetchingNextPage) return;
+                void fetchMoreListRows();
               }}
-              resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+              resetKey={`${listQueryData?.pages.length ?? 0}-${isListFetchingNextPage ? "fetching" : "idle"}-${workflowType}-${agentFilter}-${search.trim()}`}
               rootSelector=".workflows-scroll-viewport"
             />
           </div>
