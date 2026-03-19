@@ -4,6 +4,12 @@ import { Building2, Search, User, UserPlus, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "~/components/ui/accordion";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -30,6 +36,15 @@ type GroupByMode = "provider" | "facility";
 
 type WorkflowGroup = {
   key: string;
+  label: string;
+  subtitle: string;
+  rows: WorkflowListRow[];
+};
+
+type RelatedWorkflowGroup = {
+  key: string;
+  relatedId: string;
+  workflowType: string;
   label: string;
   subtitle: string;
   rows: WorkflowListRow[];
@@ -75,6 +90,37 @@ function sortRows(rows: WorkflowListRow[], sortBy: WorkflowSortMode) {
     if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
     return bAssigned - aAssigned;
   });
+}
+
+function getRelatedWorkflowLabel(row: WorkflowListRow) {
+  const typeLabel = getWorkflowTypeLabel(String(row.workflowType));
+
+  if (row.workflowType === "pfc") {
+    const facility = row.facilityName ?? "Unknown Facility";
+    return `${facility} ${typeLabel}`;
+  }
+
+  if (row.workflowType === "state_licenses") {
+    return (
+      row.contextLabel ||
+      `${row.providerName ?? "Unknown Provider"} ${typeLabel}`
+    );
+  }
+
+  if (row.workflowType === "prelive_pipeline") {
+    return row.facilityName ?? `${typeLabel} Workflow`;
+  }
+
+  if (row.workflowType === "provider_vesta_privileges") {
+    return row.providerName ?? `${typeLabel} Workflow`;
+  }
+
+  return row.contextLabel || `${typeLabel} Workflow`;
+}
+
+function getRelatedWorkflowSubtitle(group: RelatedWorkflowGroup) {
+  const workflowWord = group.rows.length === 1 ? "workflow" : "workflows";
+  return `${group.rows.length} ${workflowWord}`;
 }
 
 function formatDate(d: string | Date | null | undefined): string {
@@ -186,6 +232,7 @@ function GroupedWorkflowsDetailPane({
   detailSearch,
   onDetailSearchChange,
   groupBy,
+  sortBy,
 }: {
   group: WorkflowGroup | null;
   rows: WorkflowListRow[];
@@ -195,7 +242,47 @@ function GroupedWorkflowsDetailPane({
   detailSearch: string;
   onDetailSearchChange: (value: string) => void;
   groupBy: GroupByMode;
+  sortBy: WorkflowSortMode;
 }) {
+  const relatedWorkflowGroups = useMemo<RelatedWorkflowGroup[]>(() => {
+    const map = new Map<string, RelatedWorkflowGroup>();
+
+    for (const row of rows) {
+      const relatedKey = `${row.workflowType}:${row.relatedId}`;
+      const existing = map.get(relatedKey);
+
+      if (existing) {
+        existing.rows.push(row);
+        continue;
+      }
+
+      map.set(relatedKey, {
+        key: relatedKey,
+        relatedId: String(row.relatedId),
+        workflowType: String(row.workflowType),
+        label: getRelatedWorkflowLabel(row),
+        subtitle: "",
+        rows: [row],
+      });
+    }
+
+    return Array.from(map.values())
+      .map((relatedGroup) => ({
+        ...relatedGroup,
+        subtitle: getRelatedWorkflowSubtitle(relatedGroup),
+        rows: sortRows(relatedGroup.rows, sortBy),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [rows, sortBy]);
+
+  const [openRelatedKeys, setOpenRelatedKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    setOpenRelatedKeys(
+      relatedWorkflowGroups.map((relatedGroup) => relatedGroup.key),
+    );
+  }, [relatedWorkflowGroups]);
+
   return (
     <div className="bg-card h-[calc(83vh)] overflow-hidden rounded-lg border">
       <div className="flex items-center justify-between gap-3 border-b p-3">
@@ -229,94 +316,131 @@ function GroupedWorkflowsDetailPane({
             No workflow rows in this group match the current search.
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Phase</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>{groupBy === "provider" ? "Facility" : "Provider"}</TableHead>
-                <TableHead>Assigned</TableHead>
-                <TableHead>Start</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Updated</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                const isOverdue =
-                  !!row.dueDate &&
-                  new Date(String(row.dueDate)) < new Date() &&
-                  !(row.status ?? "").toLowerCase().includes("complet");
+          <div className="space-y-2 p-2">
+            <Accordion
+              type="multiple"
+              className="w-full space-y-2"
+              value={openRelatedKeys}
+              onValueChange={setOpenRelatedKeys}
+            >
+              {relatedWorkflowGroups.map((relatedGroup) => (
+                <AccordionItem
+                  key={relatedGroup.key}
+                  value={relatedGroup.key}
+                  className="bg-muted/20 rounded-md border px-3"
+                >
+                  <AccordionTrigger className="py-3 hover:no-underline">
+                    <div className="min-w-0 text-left">
+                      <p className="truncate text-sm font-medium">
+                        {relatedGroup.label}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {relatedGroup.subtitle}
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-3">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Phase</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>
+                            {groupBy === "provider" ? "Facility" : "Provider"}
+                          </TableHead>
+                          <TableHead>Assigned</TableHead>
+                          <TableHead>Start</TableHead>
+                          <TableHead>Due</TableHead>
+                          <TableHead>Updated</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {relatedGroup.rows.map((row) => {
+                          const isOverdue =
+                            !!row.dueDate &&
+                            new Date(String(row.dueDate)) < new Date() &&
+                            !(row.status ?? "")
+                              .toLowerCase()
+                              .includes("complet");
 
-                return (
-                  <TableRow
-                    key={row.id}
-                    className="hover:bg-muted/60 cursor-pointer"
-                    onClick={() => onOpenWorkflow(String(row.id))}
-                  >
-                    <TableCell className="font-medium">
-                      {String(row.phaseName)}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {getWorkflowTypeLabel(String(row.workflowType))}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={row.status} />
-                    </TableCell>
-                    <TableCell>
-                      {groupBy === "provider"
-                        ? row.facilityName ?? "—"
-                        : row.providerName ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {row.assignedName ? (
-                        <span className="inline-flex items-center gap-1">
-                          <User className="size-3" />
-                          {row.assignedName}
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700"
-                          disabled={claimPending}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onClaimWorkflow(String(row.id));
-                          }}
-                        >
-                          <UserPlus className="size-3" /> Claim
-                        </Button>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(
-                        row.startDate ? String(row.startDate) : undefined,
-                      )}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-xs",
-                        isOverdue
-                          ? "font-medium text-red-500"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {formatDate(
-                        row.dueDate ? String(row.dueDate) : undefined,
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(
-                        row.updatedAt ? String(row.updatedAt) : undefined,
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                          return (
+                            <TableRow
+                              key={row.id}
+                              className="hover:bg-muted/60 cursor-pointer"
+                              onClick={() => onOpenWorkflow(String(row.id))}
+                            >
+                              <TableCell className="font-medium">
+                                {String(row.phaseName)}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {getWorkflowTypeLabel(String(row.workflowType))}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={row.status} />
+                              </TableCell>
+                              <TableCell>
+                                {groupBy === "provider"
+                                  ? (row.facilityName ?? "—")
+                                  : (row.providerName ?? "—")}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {row.assignedName ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <User className="size-3" />
+                                    {row.assignedName}
+                                  </span>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700"
+                                    disabled={claimPending}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onClaimWorkflow(String(row.id));
+                                    }}
+                                  >
+                                    <UserPlus className="size-3" /> Claim
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {formatDate(
+                                  row.startDate
+                                    ? String(row.startDate)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                              <TableCell
+                                className={cn(
+                                  "text-xs",
+                                  isOverdue
+                                    ? "font-medium text-red-500"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {formatDate(
+                                  row.dueDate ? String(row.dueDate) : undefined,
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {formatDate(
+                                  row.updatedAt
+                                    ? String(row.updatedAt)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
         )}
       </div>
     </div>
@@ -441,8 +565,8 @@ export function GroupedWorkflowsView({
         })
       : selectedGroup.rows;
 
-    return sortRows(rowsInGroup, sortBy);
-  }, [detailSearch, selectedGroup, sortBy]);
+    return rowsInGroup;
+  }, [detailSearch, selectedGroup]);
 
   return (
     <div className="space-y-3">
@@ -497,6 +621,7 @@ export function GroupedWorkflowsView({
             detailSearch={detailSearch}
             onDetailSearchChange={setDetailSearch}
             groupBy={groupBy}
+            sortBy={sortBy}
           />
         </div>
       )}
