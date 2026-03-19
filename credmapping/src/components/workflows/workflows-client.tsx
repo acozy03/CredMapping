@@ -140,8 +140,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_BATCH_SIZE = 8;
-const WORKFLOW_FETCH_LIMIT = 1000;
+const WORKFLOW_PAGE_SIZE = 60;
 
 type WorkflowViewMode = "list" | "grouped";
 
@@ -391,26 +390,20 @@ function WorkflowAutoAdvance({
   onAdvance,
   rootSelector,
   resetKey,
+  isAdvancing,
 }: {
   enabled: boolean;
   onAdvance: () => void;
   rootSelector: string;
   resetKey: string;
+  isAdvancing?: boolean;
 }) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredRef = useRef(false);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     hasTriggeredRef.current = false;
-    setLoading(false);
   }, [resetKey]);
-
-  useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-    }
-  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -430,7 +423,6 @@ function WorkflowAutoAdvance({
         }
 
         hasTriggeredRef.current = true;
-        setLoading(true);
         onAdvance();
       },
       {
@@ -445,7 +437,7 @@ function WorkflowAutoAdvance({
     return () => {
       observer.disconnect();
     };
-  }, [enabled, onAdvance, rootSelector]);
+  }, [enabled, isAdvancing, onAdvance, rootSelector]);
 
   if (!enabled) {
     return null;
@@ -456,7 +448,7 @@ function WorkflowAutoAdvance({
       ref={sentinelRef}
       className="flex min-h-12 items-center justify-center"
     >
-      {loading && (
+      {isAdvancing && (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />
           Loading more workflows...
@@ -2205,32 +2197,42 @@ export default function WorkflowsClient() {
   const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
-  const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [pageOffset, setPageOffset] = useState(0);
+  const trimmedSearch = search.trim();
+  const workflowListParams = {
+    workflowType: workflowType as
+      | "all"
+      | "pfc"
+      | "state_licenses"
+      | "prelive_pipeline"
+      | "provider_vesta_privileges",
+    assignedToMe: agentFilter === "__me__",
+    assignedToAgent:
+      agentFilter !== "all" && agentFilter !== "__me__" ? agentFilter : undefined,
+    search: trimmedSearch.length > 0 ? trimmedSearch : undefined,
+  };
 
   const {
-    data: workflows = [],
+    data: pageWorkflows = [],
     isLoading,
     isFetching,
   } = api.workflows.list.useQuery(
     {
-      workflowType: workflowType as
-        | "all"
-        | "pfc"
-        | "state_licenses"
-        | "prelive_pipeline"
-        | "provider_vesta_privileges",
-      assignedToMe: agentFilter === "__me__",
-      assignedToAgent:
-        agentFilter !== "all" && agentFilter !== "__me__"
-          ? agentFilter
-          : undefined,
-      limit: WORKFLOW_FETCH_LIMIT,
-      offset: 0,
+      ...workflowListParams,
+      limit: WORKFLOW_PAGE_SIZE,
+      offset: pageOffset,
     },
-    { refetchOnWindowFocus: false },
+    {
+      refetchOnWindowFocus: false,
+    },
   );
+
+  const [loadedWorkflows, setLoadedWorkflows] = useState<typeof pageWorkflows>(
+    [],
+  );
+  const [hasMorePages, setHasMorePages] = useState(true);
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
   const { data: dbStatuses = [] } = api.workflows.distinctStatuses.useQuery({
@@ -2260,6 +2262,37 @@ export default function WorkflowsClient() {
     },
     onError: (e) => toast.error(String(e.message)),
   });
+
+  useEffect(() => {
+    setPageOffset(0);
+    setLoadedWorkflows([]);
+    setHasMorePages(true);
+  }, [workflowType, agentFilter, sortBy, search, viewMode]);
+
+  useEffect(() => {
+    const seen = new Set<string>();
+    const deduped: typeof pageWorkflows = [];
+
+    setLoadedWorkflows((prev) => {
+      for (const row of prev) {
+        seen.add(String(row.id));
+        deduped.push(row);
+      }
+
+      for (const row of pageWorkflows) {
+        const id = String(row.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        deduped.push(row);
+      }
+
+      return deduped;
+    });
+
+    setHasMorePages(pageWorkflows.length === WORKFLOW_PAGE_SIZE);
+  }, [pageWorkflows]);
+
+  const workflows = loadedWorkflows;
 
   const groupedWorkflows = useMemo(() => {
     const groups = new Map<
@@ -2345,35 +2378,10 @@ export default function WorkflowsClient() {
   }, [workflows]);
 
   const filteredWorkflows = useMemo(() => {
-    const trimmedSearch = search.trim().toLowerCase();
-
-    const matchingGroups = trimmedSearch
-      ? groupedWorkflows.filter((group) => {
-          const matchesContext = group.contextLabel
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesType = (
-            WORKFLOW_TYPE_LABELS[group.workflowType] ?? group.workflowType
-          )
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesPhase = group.phases.some((phase) => {
-            const phaseName = String(phase.phaseName ?? "").toLowerCase();
-            const assignedName = String(phase.assignedName ?? "").toLowerCase();
-            return (
-              phaseName.includes(trimmedSearch) ||
-              assignedName.includes(trimmedSearch)
-            );
-          });
-
-          return matchesContext || matchesType || matchesPhase;
-        })
-      : groupedWorkflows;
-
     const getTimestamp = (value: string | Date | null) =>
       value ? new Date(value).getTime() : 0;
 
-    return [...matchingGroups].sort((a, b) => {
+    return [...groupedWorkflows].sort((a, b) => {
       const aStarted = getTimestamp(a.latestStartDate);
       const bStarted = getTimestamp(b.latestStartDate);
       const aAssigned = getTimestamp(a.latestAssignedDate);
@@ -2384,23 +2392,15 @@ export default function WorkflowsClient() {
       if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
       return bAssigned - aAssigned;
     });
-  }, [groupedWorkflows, search, sortBy]);
+  }, [groupedWorkflows, sortBy]);
 
   const filteredPhases = useMemo(
     () => filteredWorkflows.flatMap((group) => group.phases),
     [filteredWorkflows],
   );
 
-  useEffect(() => {
-    setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, search, sortBy]);
-
-  const visibleGroups = useMemo(
-    () => filteredWorkflows.slice(0, visibleCount),
-    [filteredWorkflows, visibleCount],
-  );
-
-  const hasMoreGroups = visibleGroups.length < filteredWorkflows.length;
+  const visibleGroups = filteredWorkflows;
+  const hasMoreGroups = hasMorePages;
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -2445,7 +2445,7 @@ export default function WorkflowsClient() {
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && loadedWorkflows.length === 0 ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
@@ -2661,14 +2661,12 @@ export default function WorkflowsClient() {
             <WorkflowAutoAdvance
               enabled={hasMoreGroups}
               onAdvance={() => {
-                setVisibleCount((current) =>
-                  Math.min(
-                    current + WORKFLOW_BATCH_SIZE,
-                    filteredWorkflows.length,
-                  ),
-                );
+                if (hasMorePages && !isFetching) {
+                  setPageOffset((current) => current + WORKFLOW_PAGE_SIZE);
+                }
               }}
-              resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+              isAdvancing={isFetching && loadedWorkflows.length > 0}
+              resetKey={`${workflows.length}-${String(hasMorePages)}-${search}-${workflowType}-${agentFilter}-${sortBy}-${viewMode}`}
               rootSelector=".workflows-scroll-viewport"
             />
           </div>
