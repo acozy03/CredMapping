@@ -332,6 +332,8 @@ export const workflowsRouter = createTRPCRouter({
         assignedToMe: z.boolean().default(false),
         assignedToAgent: z.string().uuid().optional(),
         hasIncidents: z.boolean().default(false),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -387,6 +389,72 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
+      const groupingKey = sql<string>`
+        CASE
+          WHEN ${providerFacilityCredentials.providerId} IS NOT NULL
+            THEN ${sql.raw("'provider:'")} || ${providerFacilityCredentials.providerId}::text
+          WHEN ${providerStateLicenses.providerId} IS NOT NULL
+            THEN ${sql.raw("'provider:'")} || ${providerStateLicenses.providerId}::text
+          WHEN ${providerVestaPrivileges.providerId} IS NOT NULL
+            THEN ${sql.raw("'provider:'")} || ${providerVestaPrivileges.providerId}::text
+          WHEN ${facilityPreliveInfo.facilityId} IS NOT NULL
+            THEN ${sql.raw("'facility:'")} || ${facilityPreliveInfo.facilityId}::text
+          ELSE ${sql.raw("'related:'")} || ${workflowPhases.workflowType}::text || ':' || ${workflowPhases.relatedId}::text
+        END
+      `;
+
+      const providerPage = await ctx.db
+        .select({
+          providerGroupKey: groupingKey.as("provider_group_key"),
+          latestUpdatedAt: sql<Date>`max(${workflowPhases.updatedAt})`.as("latest_updated_at"),
+        })
+        .from(workflowPhases)
+        .leftJoin(
+          providerFacilityCredentials,
+          and(
+            eq(workflowPhases.workflowType, "pfc"),
+            eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+          ),
+        )
+        .leftJoin(
+          providerStateLicenses,
+          and(
+            eq(workflowPhases.workflowType, "state_licenses"),
+            eq(workflowPhases.relatedId, providerStateLicenses.id),
+          ),
+        )
+        .leftJoin(
+          providerVestaPrivileges,
+          and(
+            eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+            eq(workflowPhases.relatedId, providerVestaPrivileges.id),
+          ),
+        )
+        .leftJoin(
+          facilityPreliveInfo,
+          and(
+            eq(workflowPhases.workflowType, "prelive_pipeline"),
+            eq(workflowPhases.relatedId, facilityPreliveInfo.id),
+          ),
+        )
+        .where(conditions.length ? and(...conditions) : undefined)
+        .groupBy(groupingKey)
+        .orderBy(desc(sql`max(${workflowPhases.updatedAt})`), asc(groupingKey))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      const selectedGroupKeys = providerPage
+        .map((group) => group.providerGroupKey)
+        .filter((value): value is string => Boolean(value));
+
+      if (selectedGroupKeys.length === 0) {
+        return [];
+      }
+
+      const selectedGroupCondition = or(
+        ...selectedGroupKeys.map((providerGroupKey) => sql`${groupingKey} = ${providerGroupKey}`),
+      );
+
       const rows = await ctx.db
         .select({
           id: workflowPhases.id,
@@ -410,8 +478,40 @@ export const workflowsRouter = createTRPCRouter({
           )`.as("incident_count"),
         })
         .from(workflowPhases)
+        .leftJoin(
+          providerFacilityCredentials,
+          and(
+            eq(workflowPhases.workflowType, "pfc"),
+            eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+          ),
+        )
+        .leftJoin(
+          providerStateLicenses,
+          and(
+            eq(workflowPhases.workflowType, "state_licenses"),
+            eq(workflowPhases.relatedId, providerStateLicenses.id),
+          ),
+        )
+        .leftJoin(
+          providerVestaPrivileges,
+          and(
+            eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+            eq(workflowPhases.relatedId, providerVestaPrivileges.id),
+          ),
+        )
+        .leftJoin(
+          facilityPreliveInfo,
+          and(
+            eq(workflowPhases.workflowType, "prelive_pipeline"),
+            eq(workflowPhases.relatedId, facilityPreliveInfo.id),
+          ),
+        )
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(conditions.length ? and(...conditions) : undefined)
+        .where(
+          conditions.length
+            ? and(...conditions, selectedGroupCondition)
+            : selectedGroupCondition,
+        )
         .orderBy(desc(workflowPhases.updatedAt));
 
       const pfcIds = rows

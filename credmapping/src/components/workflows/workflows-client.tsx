@@ -144,6 +144,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
 
 const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
+const GROUPED_PROVIDER_PAGE_SIZE = 12;
 
 type WorkflowViewMode = "list" | "grouped";
 
@@ -2210,6 +2211,9 @@ export default function WorkflowsClient() {
   const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
+  const [groupedOffset, setGroupedOffset] = useState(0);
+  const [groupedRows, setGroupedRows] = useState<WorkflowRow[]>([]);
+  const [groupedHasMore, setGroupedHasMore] = useState(true);
   const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -2237,12 +2241,8 @@ export default function WorkflowsClient() {
     { refetchOnWindowFocus: false, enabled: viewMode === "list" },
   );
 
-  const {
-    data: groupedViewWorkflows = [],
-    isLoading: isGroupedLoading,
-    isFetching: isGroupedFetching,
-  } = api.workflows.listGrouped.useQuery(
-    {
+  const groupedBaseInput = useMemo(
+    () => ({
       workflowType: workflowType as
         | "all"
         | "pfc"
@@ -2254,9 +2254,54 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
+      limit: GROUPED_PROVIDER_PAGE_SIZE,
+    }),
+    [workflowType, agentFilter],
+  );
+
+  const {
+    data: groupedPageRows = [],
+    isLoading: isGroupedLoading,
+    isFetching: isGroupedFetching,
+  } = api.workflows.listGrouped.useQuery(
+    {
+      ...groupedBaseInput,
+      offset: groupedOffset,
     },
     { refetchOnWindowFocus: false, enabled: viewMode === "grouped" },
   );
+
+  useEffect(() => {
+    setGroupedOffset(0);
+    setGroupedRows([]);
+    setGroupedHasMore(true);
+  }, [groupedBaseInput]);
+
+  useEffect(() => {
+    if (viewMode !== "grouped") return;
+
+    const uniqueGroupKeys = new Set(
+      groupedPageRows.map((row) => {
+        if (row.providerId) return `provider:${row.providerId}`;
+        if (row.facilityId) return `facility:${row.facilityId}`;
+        return `related:${row.workflowType}:${row.relatedId}`;
+      }),
+    );
+
+    setGroupedHasMore(
+      groupedPageRows.length > 0 &&
+        uniqueGroupKeys.size >= GROUPED_PROVIDER_PAGE_SIZE,
+    );
+
+    setGroupedRows((previousRows) => {
+      const nextRows = groupedOffset === 0 ? groupedPageRows : [...previousRows, ...groupedPageRows];
+      const dedupedRows = new Map<string, WorkflowRow>();
+      for (const row of nextRows) {
+        dedupedRows.set(String(row.id), row);
+      }
+      return Array.from(dedupedRows.values());
+    });
+  }, [groupedOffset, groupedPageRows, viewMode]);
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
   const { data: dbStatuses = [] } = api.workflows.distinctStatuses.useQuery({
@@ -2289,7 +2334,7 @@ export default function WorkflowsClient() {
   });
 
   const activeRows: WorkflowRow[] =
-    viewMode === "grouped" ? groupedViewWorkflows : listWorkflows;
+    viewMode === "grouped" ? groupedRows : listWorkflows;
   const isLoading = viewMode === "grouped" ? isGroupedLoading : isListLoading;
   const isFetching = viewMode === "grouped" ? isGroupedFetching : isListFetching;
 
@@ -2492,13 +2537,36 @@ export default function WorkflowsClient() {
           </p>
         </div>
       ) : viewMode === "grouped" ? (
-        <GroupedWorkflowsView
-          rows={filteredPhases}
-          sortBy={sortBy}
-          claimPending={selfAssignMutation.isPending}
-          onOpenWorkflow={setSelectedId}
-          onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
-        />
+        <div className="space-y-3">
+          <GroupedWorkflowsView
+            rows={filteredPhases}
+            sortBy={sortBy}
+            claimPending={selfAssignMutation.isPending}
+            onOpenWorkflow={setSelectedId}
+            onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+          />
+          {groupedHasMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setGroupedOffset((currentOffset) => currentOffset + GROUPED_PROVIDER_PAGE_SIZE)
+                }
+                disabled={isGroupedFetching}
+                className="min-w-40"
+              >
+                {isGroupedFetching ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load more providers"
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       ) : (
         <VirtualScrollContainer
           className="overflow-hidden"
