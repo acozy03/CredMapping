@@ -537,6 +537,13 @@ export const workflowsRouter = createTRPCRouter({
       const selectedGroupCondition = or(
         ...selectedGroupKeys.map((providerGroupKey) => sql`${groupingKey} = ${providerGroupKey}`),
       );
+      const selectedRowsCondition =
+        input.workflowType !== "all"
+          ? and(
+              selectedGroupCondition,
+              eq(workflowPhases.workflowType, input.workflowType),
+            )
+          : selectedGroupCondition;
 
       const rows = await ctx.db
         .select({
@@ -590,7 +597,7 @@ export const workflowsRouter = createTRPCRouter({
           ),
         )
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(selectedGroupCondition)
+        .where(selectedRowsCondition)
         .orderBy(desc(workflowPhases.updatedAt));
 
       const pfcIds = rows
