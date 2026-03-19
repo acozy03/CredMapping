@@ -202,8 +202,14 @@ export const workflowsRouter = createTRPCRouter({
         ${providerStateLicenses.providerId},
         ${providerVestaPrivileges.providerId}
       )`;
+      const workflowFacilityId = facilityPreliveInfo.facilityId;
       const workflowGroupKey = sql<string>`coalesce(
         ${workflowProviderId}::text,
+        case
+          when ${workflowPhases.workflowType} = 'prelive_pipeline' and ${workflowFacilityId} is not null
+            then concat('facility:', ${workflowFacilityId}::text)
+          else null
+        end,
         concat('unmapped:', ${workflowPhases.workflowType}::text, ':', ${workflowPhases.relatedId}::text)
       )`;
       const workflowGroupName = sql<string>`coalesce(
@@ -215,6 +221,7 @@ export const workflowsRouter = createTRPCRouter({
       const groupBaseQuery = ctx.db
         .select({
           providerId: workflowProviderId.as("provider_id"),
+          facilityId: workflowFacilityId,
           providerKey: workflowGroupKey.as("provider_key"),
           providerName: workflowGroupName.as("provider_name"),
         })
@@ -594,6 +601,7 @@ export const workflowsRouter = createTRPCRouter({
         rows: enrichedRows,
         pageProviders: pagedProviderGroups.map((provider) => ({
           providerId: provider.providerId,
+          facilityId: provider.facilityId,
           providerKey: provider.providerKey,
           providerName: provider.providerName,
         })),
