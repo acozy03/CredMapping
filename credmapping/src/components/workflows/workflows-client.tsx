@@ -2267,7 +2267,7 @@ export default function WorkflowsClient() {
     setPageOffset(0);
     setLoadedWorkflows([]);
     setHasMorePages(true);
-  }, [workflowType, agentFilter, sortBy, search, viewMode]);
+  }, [workflowType, agentFilter, search]);
 
   useEffect(() => {
     const seen = new Set<string>();
@@ -2402,6 +2402,12 @@ export default function WorkflowsClient() {
   const visibleGroups = filteredWorkflows;
   const hasMoreGroups = hasMorePages;
 
+  const loadNextPage = () => {
+    if (hasMorePages && !isFetching) {
+      setPageOffset((current) => current + WORKFLOW_PAGE_SIZE);
+    }
+  };
+
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -2460,13 +2466,34 @@ export default function WorkflowsClient() {
           </p>
         </div>
       ) : viewMode === "grouped" ? (
-        <GroupedWorkflowsView
-          rows={filteredPhases}
-          sortBy={sortBy}
-          claimPending={selfAssignMutation.isPending}
-          onOpenWorkflow={setSelectedId}
-          onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
-        />
+        <div className="space-y-4">
+          <GroupedWorkflowsView
+            rows={filteredPhases}
+            sortBy={sortBy}
+            claimPending={selfAssignMutation.isPending}
+            onOpenWorkflow={setSelectedId}
+            onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+          />
+          {hasMorePages && (
+            <div className="flex justify-center pb-2">
+              <Button
+                variant="outline"
+                onClick={loadNextPage}
+                disabled={isFetching}
+                className="min-w-36"
+              >
+                {isFetching ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load more"
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       ) : (
         <VirtualScrollContainer
           className="overflow-hidden"
@@ -2660,11 +2687,7 @@ export default function WorkflowsClient() {
             })}
             <WorkflowAutoAdvance
               enabled={hasMoreGroups}
-              onAdvance={() => {
-                if (hasMorePages && !isFetching) {
-                  setPageOffset((current) => current + WORKFLOW_PAGE_SIZE);
-                }
-              }}
+              onAdvance={loadNextPage}
               isAdvancing={isFetching && loadedWorkflows.length > 0}
               resetKey={`${workflows.length}-${String(hasMorePages)}-${search}-${workflowType}-${agentFilter}-${sortBy}-${viewMode}`}
               rootSelector=".workflows-scroll-viewport"
