@@ -185,6 +185,7 @@ function GroupedWorkflowsDetailPane({
   claimPending,
   detailSearch,
   onDetailSearchChange,
+  groupBy,
 }: {
   group: WorkflowGroup | null;
   rows: WorkflowListRow[];
@@ -193,6 +194,7 @@ function GroupedWorkflowsDetailPane({
   claimPending: boolean;
   detailSearch: string;
   onDetailSearchChange: (value: string) => void;
+  groupBy: GroupByMode;
 }) {
   return (
     <div className="bg-card h-[calc(83vh)] overflow-hidden rounded-lg border">
@@ -233,6 +235,7 @@ function GroupedWorkflowsDetailPane({
                 <TableHead>Phase</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>{groupBy === "provider" ? "Facility" : "Provider"}</TableHead>
                 <TableHead>Assigned</TableHead>
                 <TableHead>Start</TableHead>
                 <TableHead>Due</TableHead>
@@ -260,6 +263,11 @@ function GroupedWorkflowsDetailPane({
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={row.status} />
+                    </TableCell>
+                    <TableCell>
+                      {groupBy === "provider"
+                        ? row.facilityName ?? "—"
+                        : row.providerName ?? "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {row.assignedName ? (
@@ -488,6 +496,7 @@ export function GroupedWorkflowsView({
             claimPending={claimPending}
             detailSearch={detailSearch}
             onDetailSearchChange={setDetailSearch}
+            groupBy={groupBy}
           />
         </div>
       )}
