@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "~/trpc/react";
+import { api, type RouterOutputs } from "~/trpc/react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -10,10 +10,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  LayoutList,
   Loader2,
   Pause,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   User,
   UserPlus,
@@ -51,6 +53,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from "~/components/ui/sheet";
 import { Dialog, DialogClose, DialogTrigger } from "~/components/ui/dialog";
 import {
@@ -79,6 +82,16 @@ import { cn } from "~/lib/utils";
 import { Label } from "~/components/ui/label";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 
+import { GroupedWorkflowsView } from "~/components/workflows/grouped-workflows-view";
+import {
+  formatDate,
+  isCompletedStatus,
+  isOverdue,
+  toStartOfDay,
+  WORKFLOW_TYPE_LABELS,
+  type WorkflowSortMode,
+} from "~/components/workflows/workflow-utils";
+
 type WorkflowPhaseInput = {
   phaseName: string;
   startDate: string;
@@ -87,6 +100,13 @@ type WorkflowPhaseInput = {
   agentAssigned: string;
   workflowNotes: string;
 };
+
+type WorkflowPhaseDraft = WorkflowPhaseInput & {
+  clientKey: string;
+};
+
+type WorkflowRow = RouterOutputs["workflows"]["list"]["rows"][number];
+type GroupedWorkflowRow = RouterOutputs["workflows"]["listGrouped"]["rows"][number];
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 
@@ -108,12 +128,10 @@ const PFC_PHASES = [
   "Facility Decision",
 ];
 
-const WORKFLOW_TYPE_LABELS: Record<string, string> = {
-  pfc: "PFC",
-  state_licenses: "State Licenses",
-  prelive_pipeline: "Pre-Live Pipeline",
-  provider_vesta_privileges: "Vesta Privileges",
-};
+function getPfcPhaseSortIndex(phaseName: string): number {
+  const phaseIndex = PFC_PHASES.indexOf(phaseName);
+  return phaseIndex === -1 ? Number.POSITIVE_INFINITY : phaseIndex;
+}
 
 const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
   pfc: "border-violet-500/40 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.12)]",
@@ -125,8 +143,153 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_BATCH_SIZE = 8;
-const WORKFLOW_FETCH_LIMIT = 1000;
+const WORKFLOW_PAGE_SIZE = 60;
+const GROUPED_PROVIDER_PAGE_SIZE = 12;
+
+type WorkflowViewMode = "list" | "grouped";
+
+type WorkflowsFiltersSheetProps = {
+  workflowType: string;
+  onWorkflowTypeChange: (value: string) => void;
+  agentFilter: string;
+  onAgentFilterChange: (value: string) => void;
+  sortBy: WorkflowSortMode;
+  onSortByChange: (value: WorkflowSortMode) => void;
+  agentList: Array<{ id: string | number; name: string | null }>;
+};
+
+function WorkflowsFiltersSheet({
+  workflowType,
+  onWorkflowTypeChange,
+  agentFilter,
+  onAgentFilterChange,
+  sortBy,
+  onSortByChange,
+  agentList,
+}: WorkflowsFiltersSheetProps) {
+  const resetFilters = () => {
+    onWorkflowTypeChange("all");
+    onAgentFilterChange("all");
+    onSortByChange("date_assigned_desc");
+  };
+
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="h-10">
+          <SlidersHorizontal className="size-4" /> Filters & Sort
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="gap-0">
+        <SheetHeader>
+          <SheetTitle>Filters & Sort</SheetTitle>
+        </SheetHeader>
+        <div className="border-border space-y-4 border-t px-4 py-3">
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">
+              Workflow Type
+            </Label>
+            <Select value={workflowType} onValueChange={onWorkflowTypeChange}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="pfc">PFC</SelectItem>
+                <SelectItem value="state_licenses">State Licenses</SelectItem>
+                <SelectItem value="prelive_pipeline">
+                  Pre-Live Pipeline
+                </SelectItem>
+                <SelectItem value="provider_vesta_privileges">
+                  Vesta Privileges
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Agent</Label>
+            <Select value={agentFilter} onValueChange={onAgentFilterChange}>
+              <SelectTrigger className="h-10 w-full">
+                <Users className="text-muted-foreground mr-1.5 size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                <SelectItem value="__me__">My Workflows</SelectItem>
+                {agentList.map((a) => (
+                  <SelectItem key={String(a.id)} value={String(a.id)}>
+                    {String(a.name)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Sort</Label>
+            <Select
+              value={sortBy}
+              onValueChange={(value) =>
+                onSortByChange(value as WorkflowSortMode)
+              }
+            >
+              <SelectTrigger className="h-10 w-full">
+                <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date_assigned_desc">
+                  Date Assigned: Newest
+                </SelectItem>
+                <SelectItem value="date_assigned_asc">
+                  Date Assigned: Oldest
+                </SelectItem>
+                <SelectItem value="date_started_desc">
+                  Date Started: Newest
+                </SelectItem>
+                <SelectItem value="date_started_asc">
+                  Date Started: Oldest
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mt-auto px-4 pb-4">
+          <Separator className="mb-4" />
+          <Button variant="outline" onClick={resetFilters} className="w-full">
+            Reset filters
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function WorkflowsViewToggle({
+  viewMode,
+  onViewModeChange,
+}: {
+  viewMode: WorkflowViewMode;
+  onViewModeChange: (value: WorkflowViewMode) => void;
+}) {
+  return (
+    <Select
+      value={viewMode}
+      onValueChange={(value) => onViewModeChange(value as WorkflowViewMode)}
+    >
+      <SelectTrigger className="h-10 min-w-[130px]">
+        <LayoutList className="text-muted-foreground mr-1.5 size-3.5" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="list">View: List</SelectItem>
+        <SelectItem value="grouped">View: Grouped</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
 
 type DueTone = "critical" | "warning" | "safe";
 
@@ -181,31 +344,6 @@ function WorkflowTypeBadge({ type }: { type: string }) {
   return <Badge className={cn("gap-1", colorMap[type] ?? "")}>{label}</Badge>;
 }
 
-function formatDate(d: string | Date | null | undefined): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function isCompletedStatus(status: string | null | undefined): boolean {
-  const normalized = (status ?? "").toLowerCase();
-  return (
-    normalized.includes("complet") ||
-    normalized === "done" ||
-    normalized === "approved"
-  );
-}
-
-function toStartOfDay(value: string | Date): Date {
-  const date = typeof value === "string" ? new Date(value) : new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
 function getDueTone(dueDate: string | Date | null | undefined): DueTone {
   if (!dueDate) return "safe";
 
@@ -234,6 +372,21 @@ function getWorkflowDueTone(
     .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return nextDue ? getDueTone(nextDue) : "safe";
+}
+
+function createPhaseDraft(
+  phaseName: string,
+  clientKey: string,
+): WorkflowPhaseDraft {
+  return {
+    clientKey,
+    phaseName,
+    startDate: new Date().toISOString().split("T")[0]!,
+    dueDate: "",
+    status: "Pending",
+    agentAssigned: "",
+    workflowNotes: "",
+  };
 }
 
 function WorkflowAutoAdvance({
@@ -302,7 +455,10 @@ function WorkflowAutoAdvance({
   }
 
   return (
-    <div ref={sentinelRef} className="flex min-h-12 items-center justify-center">
+    <div
+      ref={sentinelRef}
+      className="flex min-h-12 items-center justify-center"
+    >
       {loading && (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />
@@ -391,7 +547,7 @@ function IncidentDialog({
     onError: (e) => toast.error(String(e.message)),
   });
 
-  const isPending = createMutation.isPending ?? updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending;
 
   function reset() {
     setSubcategory(incident?.subcategory ?? "");
@@ -745,6 +901,7 @@ function WorkflowDetailSheet({
     onSuccess: () => {
       toast.success("Workflow updated.");
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
     },
     onError: (e) => toast.error(String(e.message)),
@@ -754,6 +911,7 @@ function WorkflowDetailSheet({
     onSuccess: () => {
       toast.success("Workflow assigned to you.");
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
     },
     onError: (e) => toast.error(String(e.message)),
@@ -1129,41 +1287,27 @@ function AddWorkflowDialog() {
     "Inactive" | "Full" | "Temp" | "In Progress" | undefined
   >("In Progress");
 
-  const [phases, setPhases] = useState<WorkflowPhaseInput[]>(() =>
-    PFC_PHASES.map((name) => ({
-      phaseName: name,
-      startDate: new Date().toISOString().split("T")[0]!,
-      dueDate: "",
-      status: "Pending",
-      agentAssigned: "",
-      workflowNotes: "",
-    })),
+  const phaseKeyCounterRef = useRef(0);
+  const getNextPhaseKey = () => `phase-${phaseKeyCounterRef.current++}`;
+
+  const [phases, setPhases] = useState<WorkflowPhaseDraft[]>(() =>
+    PFC_PHASES.map((name) =>
+      createPhaseDraft(name, `phase-${phaseKeyCounterRef.current++}`),
+    ),
   );
 
   // Update logic when workflow type changes
   useEffect(() => {
     if (workflowType === "pfc") {
       setPhases(
-        PFC_PHASES.map((name) => ({
-          phaseName: name,
-          startDate: new Date().toISOString().split("T")[0]!,
-          dueDate: "",
-          status: "Pending",
-          agentAssigned: "",
-          workflowNotes: "",
-        })),
+        PFC_PHASES.map((name) => createPhaseDraft(name, getNextPhaseKey())),
       );
     } else {
       // Default to 3 generic phases for other types
       setPhases(
-        [1, 2, 3].map((num) => ({
-          phaseName: `Phase ${num}`,
-          startDate: new Date().toISOString().split("T")[0]!,
-          dueDate: "",
-          status: "Pending",
-          agentAssigned: "",
-          workflowNotes: "",
-        })),
+        [1, 2, 3].map((num) =>
+          createPhaseDraft(`Phase ${num}`, getNextPhaseKey()),
+        ),
       );
     }
   }, [workflowType]);
@@ -1173,30 +1317,24 @@ function AddWorkflowDialog() {
     field: K,
     value: WorkflowPhaseInput[K],
   ) => {
-    const nextPhases = [...phases];
-    const targetPhase = nextPhases[index];
-    if (targetPhase) {
-      targetPhase[field] = value;
-      setPhases(nextPhases);
-    }
+    setPhases((current) =>
+      current.map((phase, phaseIndex) =>
+        phaseIndex === index ? { ...phase, [field]: value } : phase,
+      ),
+    );
   };
 
   const addPhase = () => {
-    setPhases([
-      ...phases,
-      {
-        phaseName: `Phase ${phases.length + 1}`,
-        startDate: new Date().toISOString().split("T")[0]!,
-        dueDate: "",
-        status: "Pending",
-        agentAssigned: "",
-        workflowNotes: "",
-      },
+    setPhases((current) => [
+      ...current,
+      createPhaseDraft(`Phase ${current.length + 1}`, getNextPhaseKey()),
     ]);
   };
 
   const removePhase = (indexToRemove: number) => {
-    setPhases(phases.filter((_, index) => index !== indexToRemove));
+    setPhases((current) =>
+      current.filter((_, index) => index !== indexToRemove),
+    );
   };
 
   const { data: providers = [], isLoading: isLoadingProviders } =
@@ -1219,6 +1357,7 @@ function AddWorkflowDialog() {
       toast.success("New relationship and all workflow phases created!");
       setOpen(false);
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
       resetForm();
     },
     onError: (e) => toast.error(String(e.message)),
@@ -1260,14 +1399,7 @@ function AddWorkflowDialog() {
     setVestaPrivilegeTier("In Progress");
 
     setPhases(
-      PFC_PHASES.map((name) => ({
-        phaseName: name,
-        startDate: new Date().toISOString().split("T")[0]!,
-        dueDate: "",
-        status: "Pending",
-        agentAssigned: "",
-        workflowNotes: "",
-      })),
+      PFC_PHASES.map((name) => createPhaseDraft(name, getNextPhaseKey())),
     );
   }
 
@@ -1294,8 +1426,10 @@ function AddWorkflowDialog() {
       providerId: needsProvider ? providerId : undefined,
       facilityId: needsFacility ? facilityId : undefined,
       phases: phases.map((p) => ({
-        ...p,
+        phaseName: p.phaseName,
+        startDate: p.startDate,
         dueDate: p.dueDate || undefined,
+        status: p.status,
         agentAssigned: p.agentAssigned || undefined,
         workflowNotes: p.workflowNotes || undefined,
       })),
@@ -1910,8 +2044,8 @@ function AddWorkflowDialog() {
               {phases && phases.length > 0 ? (
                 phases.map((phase, index) => (
                   <AccordionItem
-                    key={index}
-                    value={`phase-${index}`}
+                    key={phase.clientKey}
+                    value={phase.clientKey}
                     className="w-full border-b px-3 last:border-b-0"
                   >
                     <div className="flex w-full items-center gap-2 [&>h3]:flex-1">
@@ -2074,17 +2208,20 @@ export default function WorkflowsClient() {
 
   const [workflowType, setWorkflowType] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("date_assigned_desc");
+  const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
-  const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
+  const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const {
-    data: workflows = [],
-    isLoading,
-    isFetching,
-  } = api.workflows.list.useQuery(
+    data: listQueryData,
+    isLoading: isListLoading,
+    isFetching: isListFetching,
+    isFetchingNextPage: isListFetchingNextPage,
+    hasNextPage: listHasMore,
+    fetchNextPage: fetchMoreListRows,
+  } = api.workflows.list.useInfiniteQuery(
     {
       workflowType: workflowType as
         | "all"
@@ -2097,11 +2234,48 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
-      limit: WORKFLOW_FETCH_LIMIT,
-      offset: 0,
+      search: search.trim() || undefined,
+      limit: WORKFLOW_PAGE_SIZE,
     },
-    { refetchOnWindowFocus: false },
+    {
+      refetchOnWindowFocus: false,
+      enabled: viewMode === "list",
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    },
   );
+
+  const groupedBaseInput = useMemo(
+    () => ({
+      workflowType: workflowType as
+        | "all"
+        | "pfc"
+        | "state_licenses"
+        | "prelive_pipeline"
+        | "provider_vesta_privileges",
+      assignedToMe: agentFilter === "__me__",
+      assignedToAgent:
+        agentFilter !== "all" && agentFilter !== "__me__"
+          ? agentFilter
+          : undefined,
+      search: search.trim() || undefined,
+      limit: GROUPED_PROVIDER_PAGE_SIZE,
+    }),
+    [workflowType, agentFilter, search],
+  );
+
+  const {
+    data: groupedQueryData,
+    isLoading: isGroupedLoading,
+    isFetching: isGroupedFetching,
+    isFetchingNextPage: isGroupedFetchingNextPage,
+    hasNextPage: groupedHasMore,
+    fetchNextPage: fetchMoreGroupedProviders,
+  } = api.workflows.listGrouped.useInfiniteQuery(groupedBaseInput, {
+    refetchOnWindowFocus: false,
+    enabled: viewMode === "grouped",
+    initialCursor: 0,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+  });
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
   const { data: dbStatuses = [] } = api.workflows.distinctStatuses.useQuery({
@@ -2128,9 +2302,35 @@ export default function WorkflowsClient() {
     onSuccess: () => {
       toast.success("Workflow assigned to you.");
       void utils.workflows.list.invalidate();
+      void utils.workflows.listGrouped.invalidate();
     },
     onError: (e) => toast.error(String(e.message)),
   });
+
+  const groupedRows = useMemo<WorkflowRow[]>(() => {
+    const mergedRows =
+      groupedQueryData?.pages.flatMap((page) => page.rows) ?? [];
+
+    const dedupedRows = new Map<string, GroupedWorkflowRow>();
+    for (const row of mergedRows) {
+      dedupedRows.set(String(row.id), row);
+    }
+    return Array.from(dedupedRows.values());
+  }, [groupedQueryData]);
+
+  const listRows = useMemo<WorkflowRow[]>(() => {
+    const mergedRows = listQueryData?.pages.flatMap((page) => page.rows) ?? [];
+    const dedupedRows = new Map<string, WorkflowRow>();
+    for (const row of mergedRows) {
+      dedupedRows.set(String(row.id), row);
+    }
+    return Array.from(dedupedRows.values());
+  }, [listQueryData]);
+
+  const activeRows: WorkflowRow[] =
+    viewMode === "grouped" ? groupedRows : listRows;
+  const isLoading = viewMode === "grouped" ? isGroupedLoading : isListLoading;
+  const isFetching = viewMode === "grouped" ? isGroupedFetching : isListFetching;
 
   const groupedWorkflows = useMemo(() => {
     const groups = new Map<
@@ -2140,7 +2340,7 @@ export default function WorkflowsClient() {
         workflowType: string;
         contextLabel: string;
         relatedId: string;
-        phases: typeof workflows;
+        phases: WorkflowRow[];
         completedCount: number;
         totalCount: number;
         incidentCount: number;
@@ -2152,12 +2352,11 @@ export default function WorkflowsClient() {
       }
     >();
 
-    for (const wf of workflows) {
+    for (const wf of activeRows) {
       const key = `${wf.workflowType}:${wf.relatedId}`;
       const statusLower = (wf.status ?? "").toLowerCase();
       const isDone = isCompletedStatus(wf.status);
-      const isOverdue =
-        !!wf.dueDate && new Date(String(wf.dueDate)) < new Date() && !isDone;
+      const wfIsOverdue = isOverdue(wf.dueDate, wf.status);
       const isBlocked = statusLower === "blocked";
       const phaseIncidents =
         typeof wf.incidentCount === "number" ? wf.incidentCount : 0;
@@ -2168,7 +2367,7 @@ export default function WorkflowsClient() {
         existing.totalCount++;
         existing.incidentCount += phaseIncidents;
         if (isDone) existing.completedCount++;
-        if (isOverdue) existing.hasOverdue = true;
+        if (wfIsOverdue) existing.hasOverdue = true;
         if (isBlocked) existing.hasBlocked = true;
         if (
           wf.startDate &&
@@ -2207,45 +2406,20 @@ export default function WorkflowsClient() {
           latestUpdate: wf.updatedAt,
           latestStartDate: wf.startDate,
           latestAssignedDate: wf.createdAt,
-          hasOverdue: isOverdue,
+          hasOverdue: wfIsOverdue,
           hasBlocked: isBlocked,
         });
       }
     }
 
     return Array.from(groups.values());
-  }, [workflows]);
+  }, [activeRows]);
 
   const filteredWorkflows = useMemo(() => {
-    const trimmedSearch = search.trim().toLowerCase();
-
-    const matchingGroups = trimmedSearch
-      ? groupedWorkflows.filter((group) => {
-          const matchesContext = group.contextLabel
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesType = (
-            WORKFLOW_TYPE_LABELS[group.workflowType] ?? group.workflowType
-          )
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesPhase = group.phases.some((phase) => {
-            const phaseName = String(phase.phaseName ?? "").toLowerCase();
-            const assignedName = String(phase.assignedName ?? "").toLowerCase();
-            return (
-              phaseName.includes(trimmedSearch) ||
-              assignedName.includes(trimmedSearch)
-            );
-          });
-
-          return matchesContext || matchesType || matchesPhase;
-        })
-      : groupedWorkflows;
-
     const getTimestamp = (value: string | Date | null) =>
       value ? new Date(value).getTime() : 0;
 
-    return [...matchingGroups].sort((a, b) => {
+    return [...groupedWorkflows].sort((a, b) => {
       const aStarted = getTimestamp(a.latestStartDate);
       const bStarted = getTimestamp(b.latestStartDate);
       const aAssigned = getTimestamp(a.latestAssignedDate);
@@ -2256,23 +2430,16 @@ export default function WorkflowsClient() {
       if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
       return bAssigned - aAssigned;
     });
-  }, [groupedWorkflows, search, sortBy]);
+  }, [groupedWorkflows, sortBy]);
 
   const filteredPhases = useMemo(
     () => filteredWorkflows.flatMap((group) => group.phases),
     [filteredWorkflows],
   );
 
-  useEffect(() => {
-    setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, search, sortBy]);
+  const visibleGroups = filteredWorkflows;
 
-  const visibleGroups = useMemo(
-    () => filteredWorkflows.slice(0, visibleCount),
-    [filteredWorkflows, visibleCount],
-  );
-
-  const hasMoreGroups = visibleGroups.length < filteredWorkflows.length;
+  const hasMoreGroups = Boolean(listHasMore);
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -2285,70 +2452,31 @@ export default function WorkflowsClient() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_180px_180px_220px_auto]">
-        <div className="relative min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative min-w-0 flex-1 sm:min-w-[260px]">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             className="h-10 w-full pl-9"
-            placeholder="Search workflows, phases, or agents…"
+            placeholder="Search workflows..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        <Select value={workflowType} onValueChange={setWorkflowType}>
-          <SelectTrigger className="h-10 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="pfc">PFC</SelectItem>
-            <SelectItem value="state_licenses">State Licenses</SelectItem>
-            <SelectItem value="prelive_pipeline">Pre-Live Pipeline</SelectItem>
-            <SelectItem value="provider_vesta_privileges">
-              Vesta Privileges
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={agentFilter} onValueChange={setAgentFilter}>
-          <SelectTrigger className="h-10 w-full">
-            <Users className="text-muted-foreground mr-1.5 size-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Agents</SelectItem>
-            <SelectItem value="__me__">My Workflows</SelectItem>
-            {agentList.map((a) => (
-              <SelectItem key={String(a.id)} value={String(a.id)}>
-                {String(a.name)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="h-10 w-full">
-            <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date_assigned_desc">
-              Date Assigned: Newest
-            </SelectItem>
-            <SelectItem value="date_assigned_asc">
-              Date Assigned: Oldest
-            </SelectItem>
-            <SelectItem value="date_started_desc">
-              Date Started: Newest
-            </SelectItem>
-            <SelectItem value="date_started_asc">
-              Date Started: Oldest
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex h-10 items-center justify-end gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end">
+          <WorkflowsFiltersSheet
+            workflowType={workflowType}
+            onWorkflowTypeChange={setWorkflowType}
+            agentFilter={agentFilter}
+            onAgentFilterChange={setAgentFilter}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            agentList={agentList}
+          />
+          <WorkflowsViewToggle
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
           {isFetching && !isLoading && (
             <Loader2 className="text-muted-foreground size-4 animate-spin" />
           )}
@@ -2360,7 +2488,48 @@ export default function WorkflowsClient() {
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
-      ) : filteredWorkflows.length === 0 ? (
+      ) : viewMode === "grouped" ? (
+        <div className="space-y-3">
+          {filteredPhases.length === 0 ? (
+            <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
+              <Workflow className="text-muted-foreground/50 size-10" />
+              <h3 className="mt-4 text-lg font-semibold">No workflows found</h3>
+              <p className="text-muted-foreground mt-2 max-w-xs text-sm">
+                {search || workflowType !== "all" || agentFilter !== "all"
+                  ? "No grouped workflows match the current filters yet. Try loading more providers."
+                  : "Workflow phases are created when providers are assigned to facilities."}
+              </p>
+            </div>
+          ) : (
+            <GroupedWorkflowsView
+              rows={filteredPhases}
+              sortBy={sortBy}
+              claimPending={selfAssignMutation.isPending}
+              onOpenWorkflow={setSelectedId}
+              onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+            />
+          )}
+          {groupedHasMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => void fetchMoreGroupedProviders()}
+                disabled={isGroupedFetching || isGroupedFetchingNextPage}
+                className="min-w-40"
+              >
+                {isGroupedFetchingNextPage ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load more providers"
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : filteredPhases.length === 0 ? (
         <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
           <Workflow className="text-muted-foreground/50 size-10" />
           <h3 className="mt-4 text-lg font-semibold">No workflows found</h3>
@@ -2377,196 +2546,201 @@ export default function WorkflowsClient() {
           viewportClassName="workflows-scroll-viewport"
         >
           <div className="space-y-3 p-4">
-          {visibleGroups.map((group) => {
-            const isExpanded = expandedGroups.has(String(group.key));
-            const progress =
-              group.totalCount > 0
-                ? Math.round((group.completedCount / group.totalCount) * 100)
-                : 0;
-            const dueTone = getWorkflowDueTone(group.phases);
+            {visibleGroups.map((group) => {
+              const isExpanded = expandedGroups.has(String(group.key));
+              const progress =
+                group.totalCount > 0
+                  ? Math.round((group.completedCount / group.totalCount) * 100)
+                  : 0;
+              const dueTone = getWorkflowDueTone(group.phases);
+              const expandedPhases =
+                group.workflowType === "pfc"
+                  ? [...group.phases].sort(
+                      (a, b) =>
+                        getPfcPhaseSortIndex(String(a.phaseName)) -
+                        getPfcPhaseSortIndex(String(b.phaseName)),
+                    )
+                  : group.phases;
 
-            return (
-              <div
-                key={group.key}
-                className={cn(
-                  "bg-card overflow-hidden rounded-lg border",
-                  WORKFLOW_TYPE_OUTLINE_STYLES[group.workflowType],
-                )}
-              >
-                <button
-                  className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
-                  onClick={() => toggleGroup(String(group.key))}
+              return (
+                <div
+                  key={group.key}
+                  className={cn(
+                    "bg-card overflow-hidden rounded-lg border",
+                    WORKFLOW_TYPE_OUTLINE_STYLES[group.workflowType],
+                  )}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.18em] uppercase">
-                            {WORKFLOW_TYPE_LABELS[group.workflowType] ??
-                              group.workflowType}
-                          </p>
-                          <h3 className="truncate text-base font-semibold">
-                            {group.contextLabel}
-                          </h3>
-                        </div>
-                        <div className="flex flex-wrap justify-start gap-2 sm:max-w-[50%] sm:justify-end">
-                          {group.hasOverdue && (
-                            <Badge className="h-5 border-red-500/25 bg-red-500/15 py-0 text-[10px] text-red-600">
-                              OVERDUE
-                            </Badge>
-                          )}
-                          {group.hasBlocked && (
-                            <Badge className="h-5 border-amber-500/25 bg-amber-500/15 py-0 text-[10px] text-amber-600">
-                              BLOCKED
-                            </Badge>
-                          )}
-                          {group.incidentCount > 0 && (
-                            <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 py-0 text-[10px] text-orange-600">
-                              <AlertTriangle className="size-2.5" />
-                              {group.incidentCount} incident
-                              {group.incidentCount !== 1 ? "s" : ""}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-3">
-                        <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all",
-                              WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
+                  <button
+                    className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
+                    onClick={() => toggleGroup(String(group.key))}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.18em] uppercase">
+                              {WORKFLOW_TYPE_LABELS[group.workflowType] ??
+                                group.workflowType}
+                            </p>
+                            <h3 className="truncate text-base font-semibold">
+                              {group.contextLabel}
+                            </h3>
+                          </div>
+                          <div className="flex flex-wrap justify-start gap-2 sm:max-w-[50%] sm:justify-end">
+                            {group.hasOverdue && (
+                              <Badge className="h-5 border-red-500/25 bg-red-500/15 py-0 text-[10px] text-red-600">
+                                OVERDUE
+                              </Badge>
                             )}
-                            style={{ width: `${progress}%` }}
-                          />
+                            {group.hasBlocked && (
+                              <Badge className="h-5 border-amber-500/25 bg-amber-500/15 py-0 text-[10px] text-amber-600">
+                                BLOCKED
+                              </Badge>
+                            )}
+                            {group.incidentCount > 0 && (
+                              <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 py-0 text-[10px] text-orange-600">
+                                <AlertTriangle className="size-2.5" />
+                                {group.incidentCount} incident
+                                {group.incidentCount !== 1 ? "s" : ""}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-muted-foreground shrink-0 text-xs">
-                          {group.completedCount}/{group.totalCount} phase
-                          {group.totalCount !== 1 ? "s" : ""} done · Updated{" "}
-                          {formatDate(
-                            group.latestUpdate
-                              ? String(group.latestUpdate)
-                              : undefined,
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={cn(
-                        "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
-                        isExpanded && "rotate-90",
-                      )}
-                    />
-                  </div>
-                </button>
 
-                {isExpanded && (
-                  <div className="border-t px-4 py-3">
-                    <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Phase</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Assigned</TableHead>
-                          <TableHead>Start</TableHead>
-                          <TableHead>Due</TableHead>
-                          <TableHead className="text-right">Updated</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {group.phases.map((phase) => (
-                          <TableRow
-                            key={phase.id}
-                            className="hover:bg-muted/50 cursor-pointer"
-                            onClick={() => setSelectedId(String(phase.id))}
-                          >
-                            <TableCell className="font-medium">
-                              {String(phase.phaseName)}
-                            </TableCell>
-                            <TableCell>
-                              <StatusBadge status={phase.status} />
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {phase.assignedName ? (
-                                <>
-                                  {phase.assignedName}
-                                  {phase.supportingAgentIds.length > 0 && (
-                                    <span className="ml-1 text-[10px] opacity-60">
-                                      +{phase.supportingAgentIds.length}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                                  disabled={selfAssignMutation.isPending}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selfAssignMutation.mutate({
-                                      id: String(phase.id),
-                                    });
-                                  }}
-                                >
-                                  <UserPlus className="size-3" /> Claim
-                                </Button>
+                        <div className="mt-3 flex items-center gap-3">
+                          <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
                               )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
-                              {formatDate(
-                                phase.startDate
-                                  ? String(phase.startDate)
-                                  : undefined,
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
-                              {phase.dueDate ? (
-                                <span
-                                  className={
-                                    new Date(String(phase.dueDate)) <
-                                      new Date() &&
-                                    !(phase.status ?? "")
-                                      .toLowerCase()
-                                      .includes("complet")
-                                      ? "font-medium text-red-500"
-                                      : ""
-                                  }
-                                >
-                                  {formatDate(String(phase.dueDate))}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-right text-xs">
-                              {formatDate(
-                                phase.updatedAt
-                                  ? String(phase.updatedAt)
-                                  : undefined,
-                              )}
-                            </TableCell>
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <span className="text-muted-foreground shrink-0 text-xs">
+                            {group.completedCount}/{group.totalCount} phase
+                            {group.totalCount !== 1 ? "s" : ""} done · Updated{" "}
+                            {formatDate(
+                              group.latestUpdate
+                                ? String(group.latestUpdate)
+                                : undefined,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight
+                        className={cn(
+                          "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
+                          isExpanded && "rotate-90",
+                        )}
+                      />
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t px-4 py-3">
+                      <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Phase</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Assigned</TableHead>
+                            <TableHead>Start</TableHead>
+                            <TableHead>Due</TableHead>
+                            <TableHead className="text-right">
+                              Updated
+                            </TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <WorkflowAutoAdvance
-            enabled={hasMoreGroups}
-            onAdvance={() => {
-              setVisibleCount((current) =>
-                Math.min(current + WORKFLOW_BATCH_SIZE, filteredWorkflows.length),
+                        </TableHeader>
+                        <TableBody>
+                          {expandedPhases.map((phase) => (
+                            <TableRow
+                              key={phase.id}
+                              className="hover:bg-muted/50 cursor-pointer"
+                              onClick={() => setSelectedId(String(phase.id))}
+                            >
+                              <TableCell className="font-medium">
+                                {String(phase.phaseName)}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={phase.status} />
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {phase.assignedName ? (
+                                  <>
+                                    {phase.assignedName}
+                                    {phase.supportingAgentIds.length > 0 && (
+                                      <span className="ml-1 text-[10px] opacity-60">
+                                        +{phase.supportingAgentIds.length}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                    disabled={selfAssignMutation.isPending}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      selfAssignMutation.mutate({
+                                        id: String(phase.id),
+                                      });
+                                    }}
+                                  >
+                                    <UserPlus className="size-3" /> Claim
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {formatDate(
+                                  phase.startDate
+                                    ? String(phase.startDate)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {phase.dueDate ? (
+                                  <span
+                                    className={
+                                      isOverdue(phase.dueDate, phase.status)
+                                        ? "font-medium text-red-500"
+                                        : ""
+                                    }
+                                  >
+                                    {formatDate(String(phase.dueDate))}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-right text-xs">
+                                {formatDate(
+                                  phase.updatedAt
+                                    ? String(phase.updatedAt)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
               );
-            }}
-            resetKey={`${visibleCount}-${filteredWorkflows.length}`}
-            rootSelector=".workflows-scroll-viewport"
-          />
-        </div>
-      </VirtualScrollContainer>
+            })}
+            <WorkflowAutoAdvance
+              enabled={hasMoreGroups}
+              onAdvance={() => {
+                if (!listHasMore || isListFetchingNextPage) return;
+                void fetchMoreListRows();
+              }}
+              resetKey={`${listQueryData?.pages.length ?? 0}-${isListFetchingNextPage ? "fetching" : "idle"}-${workflowType}-${agentFilter}-${search.trim()}`}
+              rootSelector=".workflows-scroll-viewport"
+            />
+          </div>
+        </VirtualScrollContainer>
       )}
 
       {false && filteredPhases.length > 0 && (
@@ -2574,11 +2748,7 @@ export default function WorkflowsClient() {
           <span>
             {
               filteredPhases.filter((w) => {
-                const status = (w.status ?? "").toLowerCase();
-                return (
-                  Boolean(status.includes("complet")) ||
-                  Boolean(status === "done")
-                );
+                return isCompletedStatus(w.status);
               }).length
             }{" "}
             completed
@@ -2596,11 +2766,7 @@ export default function WorkflowsClient() {
           <span>
             {
               filteredPhases.filter((w) => {
-                return Boolean(
-                  w.dueDate &&
-                  new Date(String(w.dueDate)) < new Date() &&
-                  !(w.status ?? "").toLowerCase().includes("complet"),
-                );
+                return Boolean(isOverdue(w.dueDate, w.status));
               }).length
             }{" "}
             overdue
