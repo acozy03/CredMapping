@@ -106,6 +106,7 @@ type WorkflowPhaseDraft = WorkflowPhaseInput & {
 };
 
 type WorkflowRow = RouterOutputs["workflows"]["list"][number];
+type GroupedWorkflowRow = RouterOutputs["workflows"]["listGrouped"]["rows"][number];
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 
@@ -144,6 +145,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
 
 const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
+const GROUPED_PROVIDER_PAGE_SIZE = 12;
 
 type WorkflowViewMode = "list" | "grouped";
 
@@ -2237,12 +2239,8 @@ export default function WorkflowsClient() {
     { refetchOnWindowFocus: false, enabled: viewMode === "list" },
   );
 
-  const {
-    data: groupedViewWorkflows = [],
-    isLoading: isGroupedLoading,
-    isFetching: isGroupedFetching,
-  } = api.workflows.listGrouped.useQuery(
-    {
+  const groupedBaseInput = useMemo(
+    () => ({
       workflowType: workflowType as
         | "all"
         | "pfc"
@@ -2254,9 +2252,25 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
-    },
-    { refetchOnWindowFocus: false, enabled: viewMode === "grouped" },
+      search: search.trim() || undefined,
+      limit: GROUPED_PROVIDER_PAGE_SIZE,
+    }),
+    [workflowType, agentFilter, search],
   );
+
+  const {
+    data: groupedQueryData,
+    isLoading: isGroupedLoading,
+    isFetching: isGroupedFetching,
+    isFetchingNextPage: isGroupedFetchingNextPage,
+    hasNextPage: groupedHasMore,
+    fetchNextPage: fetchMoreGroupedProviders,
+  } = api.workflows.listGrouped.useInfiniteQuery(groupedBaseInput, {
+    refetchOnWindowFocus: false,
+    enabled: viewMode === "grouped",
+    initialCursor: 0,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+  });
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
   const { data: dbStatuses = [] } = api.workflows.distinctStatuses.useQuery({
@@ -2288,8 +2302,19 @@ export default function WorkflowsClient() {
     onError: (e) => toast.error(String(e.message)),
   });
 
+  const groupedRows = useMemo<WorkflowRow[]>(() => {
+    const mergedRows =
+      groupedQueryData?.pages.flatMap((page) => page.rows) ?? [];
+
+    const dedupedRows = new Map<string, GroupedWorkflowRow>();
+    for (const row of mergedRows) {
+      dedupedRows.set(String(row.id), row);
+    }
+    return Array.from(dedupedRows.values());
+  }, [groupedQueryData]);
+
   const activeRows: WorkflowRow[] =
-    viewMode === "grouped" ? groupedViewWorkflows : listWorkflows;
+    viewMode === "grouped" ? groupedRows : listWorkflows;
   const isLoading = viewMode === "grouped" ? isGroupedLoading : isListLoading;
   const isFetching = viewMode === "grouped" ? isGroupedFetching : isListFetching;
 
@@ -2377,7 +2402,8 @@ export default function WorkflowsClient() {
   }, [activeRows]);
 
   const filteredWorkflows = useMemo(() => {
-    const trimmedSearch = search.trim().toLowerCase();
+    const trimmedSearch =
+      viewMode === "grouped" ? "" : search.trim().toLowerCase();
 
     const matchingGroups = trimmedSearch
       ? groupedWorkflows.filter((group) => {
@@ -2416,7 +2442,7 @@ export default function WorkflowsClient() {
       if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
       return bAssigned - aAssigned;
     });
-  }, [groupedWorkflows, search, sortBy]);
+  }, [groupedWorkflows, search, sortBy, viewMode]);
 
   const filteredPhases = useMemo(
     () => filteredWorkflows.flatMap((group) => group.phases),
@@ -2481,6 +2507,47 @@ export default function WorkflowsClient() {
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
+      ) : viewMode === "grouped" ? (
+        <div className="space-y-3">
+          {filteredPhases.length === 0 ? (
+            <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
+              <Workflow className="text-muted-foreground/50 size-10" />
+              <h3 className="mt-4 text-lg font-semibold">No workflows found</h3>
+              <p className="text-muted-foreground mt-2 max-w-xs text-sm">
+                {search || workflowType !== "all" || agentFilter !== "all"
+                  ? "No grouped workflows match the current filters yet. Try loading more providers."
+                  : "Workflow phases are created when providers are assigned to facilities."}
+              </p>
+            </div>
+          ) : (
+            <GroupedWorkflowsView
+              rows={filteredPhases}
+              sortBy={sortBy}
+              claimPending={selfAssignMutation.isPending}
+              onOpenWorkflow={setSelectedId}
+              onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+            />
+          )}
+          {groupedHasMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => void fetchMoreGroupedProviders()}
+                disabled={isGroupedFetching || isGroupedFetchingNextPage}
+                className="min-w-40"
+              >
+                {isGroupedFetchingNextPage ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load more providers"
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       ) : filteredPhases.length === 0 ? (
         <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
           <Workflow className="text-muted-foreground/50 size-10" />
@@ -2491,14 +2558,6 @@ export default function WorkflowsClient() {
               : "Workflow phases are created when providers are assigned to facilities."}
           </p>
         </div>
-      ) : viewMode === "grouped" ? (
-        <GroupedWorkflowsView
-          rows={filteredPhases}
-          sortBy={sortBy}
-          claimPending={selfAssignMutation.isPending}
-          onOpenWorkflow={setSelectedId}
-          onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
-        />
       ) : (
         <VirtualScrollContainer
           className="overflow-hidden"

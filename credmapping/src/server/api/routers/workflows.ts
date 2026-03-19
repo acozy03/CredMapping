@@ -328,20 +328,21 @@ export const workflowsRouter = createTRPCRouter({
         workflowType: z
           .enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges", "all"])
           .default("all"),
-        status: z.string().optional(),
         assignedToMe: z.boolean().default(false),
         assignedToAgent: z.string().uuid().optional(),
         hasIncidents: z.boolean().default(false),
+        search: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).optional(),
+        cursor: z.number().int().min(0).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
+      const effectiveOffset = input.offset ?? input.cursor ?? 0;
       const conditions = [];
 
       if (input.workflowType !== "all") {
         conditions.push(eq(workflowPhases.workflowType, input.workflowType));
-      }
-      if (input.status && input.status !== "all") {
-        conditions.push(eq(workflowPhases.status, input.status));
       }
 
       if (input.assignedToMe && ctx.user) {
@@ -358,7 +359,7 @@ export const workflowsRouter = createTRPCRouter({
             );
           conditions.push(inArray(workflowPhases.relatedId, myRelated));
         } else {
-          return [];
+          return { rows: [], hasMore: false, nextOffset: null };
         }
       }
 
@@ -387,6 +388,159 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
+      if (input.search?.trim()) {
+        const searchValue = `%${input.search.trim()}%`;
+        conditions.push(
+          or(
+            ilike(workflowPhases.phaseName, searchValue),
+            ilike(sql<string>`concat_ws(' ', ${agents.firstName}, ${agents.lastName})`, searchValue),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(providerFacilityCredentials)
+                .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+                .leftJoin(facilities, eq(providerFacilityCredentials.facilityId, facilities.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "pfc"),
+                    eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+                    or(
+                      ilike(
+                        sql<string>`concat_ws(' ', ${providers.firstName}, ${providers.lastName})`,
+                        searchValue,
+                      ),
+                      ilike(facilities.name, searchValue),
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(providerStateLicenses)
+                .leftJoin(providers, eq(providerStateLicenses.providerId, providers.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "state_licenses"),
+                    eq(workflowPhases.relatedId, providerStateLicenses.id),
+                    or(
+                      ilike(
+                        sql<string>`concat_ws(' ', ${providers.firstName}, ${providers.lastName})`,
+                        searchValue,
+                      ),
+                      ilike(providerStateLicenses.state, searchValue),
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(providerVestaPrivileges)
+                .leftJoin(providers, eq(providerVestaPrivileges.providerId, providers.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+                    eq(workflowPhases.relatedId, providerVestaPrivileges.id),
+                    ilike(
+                      sql<string>`concat_ws(' ', ${providers.firstName}, ${providers.lastName})`,
+                      searchValue,
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(facilityPreliveInfo)
+                .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "prelive_pipeline"),
+                    eq(workflowPhases.relatedId, facilityPreliveInfo.id),
+                    ilike(facilities.name, searchValue),
+                  ),
+                ),
+            ),
+          ),
+        );
+      }
+
+      const groupingKey = sql<string>`
+        CASE
+          WHEN ${providerFacilityCredentials.providerId} IS NOT NULL
+            THEN ${sql.raw("'provider:'")} || ${providerFacilityCredentials.providerId}::text
+          WHEN ${providerStateLicenses.providerId} IS NOT NULL
+            THEN ${sql.raw("'provider:'")} || ${providerStateLicenses.providerId}::text
+          WHEN ${providerVestaPrivileges.providerId} IS NOT NULL
+            THEN ${sql.raw("'provider:'")} || ${providerVestaPrivileges.providerId}::text
+          WHEN ${facilityPreliveInfo.facilityId} IS NOT NULL
+            THEN ${sql.raw("'facility:'")} || ${facilityPreliveInfo.facilityId}::text
+          ELSE ${sql.raw("'related:'")} || ${workflowPhases.workflowType}::text || ':' || ${workflowPhases.relatedId}::text
+        END
+      `;
+
+      const providerPage = await ctx.db
+        .select({
+          providerGroupKey: groupingKey.as("provider_group_key"),
+          latestUpdatedAt: sql<Date>`max(${workflowPhases.updatedAt})`.as("latest_updated_at"),
+        })
+        .from(workflowPhases)
+        .leftJoin(
+          providerFacilityCredentials,
+          and(
+            eq(workflowPhases.workflowType, "pfc"),
+            eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+          ),
+        )
+        .leftJoin(
+          providerStateLicenses,
+          and(
+            eq(workflowPhases.workflowType, "state_licenses"),
+            eq(workflowPhases.relatedId, providerStateLicenses.id),
+          ),
+        )
+        .leftJoin(
+          providerVestaPrivileges,
+          and(
+            eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+            eq(workflowPhases.relatedId, providerVestaPrivileges.id),
+          ),
+        )
+        .leftJoin(
+          facilityPreliveInfo,
+          and(
+            eq(workflowPhases.workflowType, "prelive_pipeline"),
+            eq(workflowPhases.relatedId, facilityPreliveInfo.id),
+          ),
+        )
+        .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .groupBy(groupingKey)
+        .orderBy(desc(sql`max(${workflowPhases.updatedAt})`), asc(groupingKey))
+        .limit(input.limit + 1)
+        .offset(effectiveOffset);
+
+      const selectedGroupKeys = providerPage
+        .slice(0, input.limit)
+        .map((group) => group.providerGroupKey)
+        .filter((value): value is string => Boolean(value));
+
+      if (selectedGroupKeys.length === 0) {
+        return { rows: [], hasMore: false, nextOffset: null };
+      }
+
+      const selectedGroupCondition = or(
+        ...selectedGroupKeys.map((providerGroupKey) => sql`${groupingKey} = ${providerGroupKey}`),
+      );
+      const selectedRowsCondition =
+        input.workflowType !== "all"
+          ? and(
+              selectedGroupCondition,
+              eq(workflowPhases.workflowType, input.workflowType),
+            )
+          : selectedGroupCondition;
+
       const rows = await ctx.db
         .select({
           id: workflowPhases.id,
@@ -410,8 +564,36 @@ export const workflowsRouter = createTRPCRouter({
           )`.as("incident_count"),
         })
         .from(workflowPhases)
+        .leftJoin(
+          providerFacilityCredentials,
+          and(
+            eq(workflowPhases.workflowType, "pfc"),
+            eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+          ),
+        )
+        .leftJoin(
+          providerStateLicenses,
+          and(
+            eq(workflowPhases.workflowType, "state_licenses"),
+            eq(workflowPhases.relatedId, providerStateLicenses.id),
+          ),
+        )
+        .leftJoin(
+          providerVestaPrivileges,
+          and(
+            eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+            eq(workflowPhases.relatedId, providerVestaPrivileges.id),
+          ),
+        )
+        .leftJoin(
+          facilityPreliveInfo,
+          and(
+            eq(workflowPhases.workflowType, "prelive_pipeline"),
+            eq(workflowPhases.relatedId, facilityPreliveInfo.id),
+          ),
+        )
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(conditions.length ? and(...conditions) : undefined)
+        .where(selectedRowsCondition)
         .orderBy(desc(workflowPhases.updatedAt));
 
       const pfcIds = rows
@@ -535,7 +717,7 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      return rows.map((row) => {
+      const mappedRows = rows.map((row) => {
         const pfc = pfcMap.get(row.relatedId);
         const assignedName =
           row.assignedFirstName || row.assignedLastName
@@ -592,6 +774,14 @@ export const workflowsRouter = createTRPCRouter({
           supportingAgentIds: (row.supportingAgents as string[] | null) ?? [],
         };
       });
+
+      const hasMore = providerPage.length > input.limit;
+
+      return {
+        rows: mappedRows,
+        hasMore,
+        nextOffset: hasMore ? effectiveOffset + input.limit : null,
+      };
     }),
 
   /** Get a single workflow phase with full details */
