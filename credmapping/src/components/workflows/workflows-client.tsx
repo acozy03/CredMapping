@@ -2214,11 +2214,7 @@ export default function WorkflowsClient() {
     search: trimmedSearch.length > 0 ? trimmedSearch : undefined,
   };
 
-  const {
-    data: pageWorkflows = [],
-    isLoading,
-    isFetching,
-  } = api.workflows.list.useQuery(
+  const workflowsQuery = api.workflows.list.useQuery(
     {
       ...workflowListParams,
       limit: WORKFLOW_PAGE_SIZE,
@@ -2229,9 +2225,13 @@ export default function WorkflowsClient() {
     },
   );
 
-  const [loadedWorkflows, setLoadedWorkflows] = useState<typeof pageWorkflows>(
-    [],
-  );
+  const pageWorkflows = workflowsQuery.data;
+  const isLoading = workflowsQuery.isLoading;
+  const isFetching = workflowsQuery.isFetching;
+
+  type WorkflowListRow = NonNullable<typeof workflowsQuery.data>[number];
+
+  const [loadedWorkflows, setLoadedWorkflows] = useState<WorkflowListRow[]>([]);
   const [hasMorePages, setHasMorePages] = useState(true);
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
@@ -2270,8 +2270,10 @@ export default function WorkflowsClient() {
   }, [workflowType, agentFilter, search]);
 
   useEffect(() => {
+    if (!pageWorkflows) return;
+
     const seen = new Set<string>();
-    const deduped: typeof pageWorkflows = [];
+    const deduped: WorkflowListRow[] = [];
 
     setLoadedWorkflows((prev) => {
       for (const row of prev) {

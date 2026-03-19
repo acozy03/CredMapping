@@ -213,7 +213,7 @@ export const workflowsRouter = createTRPCRouter({
         .from(workflowPhases)
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
         .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(workflowPhases.updatedAt))
+        .orderBy(desc(workflowPhases.updatedAt), desc(workflowPhases.id))
         .limit(input.limit)
         .offset(input.offset);
 
