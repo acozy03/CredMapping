@@ -36,7 +36,7 @@ import {
 import { cn } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 
-type WorkflowListRow = RouterOutputs["workflows"]["list"][number];
+type WorkflowListRow = RouterOutputs["workflows"]["list"]["rows"][number];
 
 type GroupByMode = "provider" | "facility";
 

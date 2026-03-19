@@ -41,12 +41,22 @@ export const workflowsRouter = createTRPCRouter({
         assignedToAgent: z.string().uuid().optional(),
         hasIncidents: z.boolean().default(false),
         search: z.string().optional(),
-        limit: z.number().default(60),
-        offset: z.number().default(0),
+        limit: z.number().int().min(1).max(200).default(60),
+        cursor: z
+          .object({
+            updatedAt: z.string().datetime(),
+            id: z.string().uuid(),
+          })
+          .optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const conditions = [];
+      const searchTerm = input.search?.trim();
+      const cursorUpdatedAt = input.cursor?.updatedAt
+        ? new Date(input.cursor.updatedAt)
+        : null;
+      const cursorId = input.cursor?.id ?? null;
 
       if (input.workflowType !== "all") {
         conditions.push(eq(workflowPhases.workflowType, input.workflowType));
@@ -55,42 +65,36 @@ export const workflowsRouter = createTRPCRouter({
         conditions.push(eq(workflowPhases.status, input.status));
       }
 
-      // "Assigned to me" – find workflow groups that have at least one phase
-      // assigned to (or supporting) the current user, then return ALL phases
-      // for those groups so the grouped UI shows the complete workflow.
+      // "Assigned to me" (row-level for list view).
       if (input.assignedToMe && ctx.user) {
         const actor = await resolveAgentId(ctx.db, ctx.user.id);
         if (actor) {
-          // Sub-select: relatedIds where the user is assigned or supporting
-          const myRelated = ctx.db
-            .selectDistinct({ relatedId: workflowPhases.relatedId })
-            .from(workflowPhases)
-            .where(
-              or(
-                eq(workflowPhases.agentAssigned, actor.id),
-                sql`${workflowPhases.supportingAgents}::jsonb @> ${JSON.stringify([actor.id])}::jsonb`,
-              ),
-            );
-          conditions.push(inArray(workflowPhases.relatedId, myRelated));
+          conditions.push(
+            or(
+              eq(workflowPhases.agentAssigned, actor.id),
+              sql`${workflowPhases.supportingAgents}::jsonb @> ${JSON.stringify([actor.id])}::jsonb`,
+            ),
+          );
         } else {
           // User has no agent record — return nothing
-          return [];
+          return {
+            rows: [],
+            limit: input.limit,
+            hasMore: false,
+            nextCursor: null,
+          };
         }
       }
 
       // Filter by a specific agent (not just "me")
       if (input.assignedToAgent) {
         const agentId = input.assignedToAgent;
-        const agentRelated = ctx.db
-          .selectDistinct({ relatedId: workflowPhases.relatedId })
-          .from(workflowPhases)
-          .where(
-            or(
-              eq(workflowPhases.agentAssigned, agentId),
-              sql`${workflowPhases.supportingAgents}::jsonb @> ${JSON.stringify([agentId])}::jsonb`,
-            ),
-          );
-        conditions.push(inArray(workflowPhases.relatedId, agentRelated));
+        conditions.push(
+          or(
+            eq(workflowPhases.agentAssigned, agentId),
+            sql`${workflowPhases.supportingAgents}::jsonb @> ${JSON.stringify([agentId])}::jsonb`,
+          ),
+        );
       }
 
       // Filter to only workflow phases that have at least one incident log
@@ -105,9 +109,142 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      if (input.search) {
-        conditions.push(ilike(workflowPhases.phaseName, `%${input.search}%`));
+      if (searchTerm) {
+        const searchValue = `%${searchTerm}%`;
+        conditions.push(
+          or(
+            ilike(workflowPhases.phaseName, searchValue),
+            ilike(
+              sql<string>`concat_ws(' ', ${agents.firstName}, ${agents.lastName})`,
+              searchValue,
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(providerFacilityCredentials)
+                .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+                .leftJoin(facilities, eq(providerFacilityCredentials.facilityId, facilities.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "pfc"),
+                    eq(workflowPhases.relatedId, providerFacilityCredentials.id),
+                    or(
+                      ilike(
+                        sql<string>`concat_ws(' ', ${providers.firstName}, ${providers.lastName})`,
+                        searchValue,
+                      ),
+                      ilike(facilities.name, searchValue),
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(providerStateLicenses)
+                .leftJoin(providers, eq(providerStateLicenses.providerId, providers.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "state_licenses"),
+                    eq(workflowPhases.relatedId, providerStateLicenses.id),
+                    or(
+                      ilike(
+                        sql<string>`concat_ws(' ', ${providers.firstName}, ${providers.lastName})`,
+                        searchValue,
+                      ),
+                      ilike(providerStateLicenses.state, searchValue),
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(providerVestaPrivileges)
+                .leftJoin(providers, eq(providerVestaPrivileges.providerId, providers.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+                    eq(workflowPhases.relatedId, providerVestaPrivileges.id),
+                    ilike(
+                      sql<string>`concat_ws(' ', ${providers.firstName}, ${providers.lastName})`,
+                      searchValue,
+                    ),
+                  ),
+                ),
+            ),
+            exists(
+              ctx.db
+                .select({ one: sql`1` })
+                .from(facilityPreliveInfo)
+                .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+                .where(
+                  and(
+                    eq(workflowPhases.workflowType, "prelive_pipeline"),
+                    eq(workflowPhases.relatedId, facilityPreliveInfo.id),
+                    ilike(facilities.name, searchValue),
+                  ),
+                ),
+            ),
+          ),
+        );
       }
+
+      const latestUpdatedAtExpr = sql<Date>`max(${workflowPhases.updatedAt})`;
+      const latestIdExpr = sql<string>`max(${workflowPhases.id}::text)`;
+
+      const groupPage = await ctx.db
+        .select({
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          latestUpdatedAt: latestUpdatedAtExpr.as("latest_updated_at"),
+          latestId: latestIdExpr.as("latest_id"),
+        })
+        .from(workflowPhases)
+        .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .groupBy(workflowPhases.workflowType, workflowPhases.relatedId)
+        .having(
+          cursorUpdatedAt && cursorId
+            ? or(
+                sql`${latestUpdatedAtExpr} < ${cursorUpdatedAt}`,
+                and(
+                  sql`${latestUpdatedAtExpr} = ${cursorUpdatedAt}`,
+                  sql`${latestIdExpr} < ${cursorId}`,
+                ),
+              )
+            : undefined,
+        )
+        .orderBy(desc(latestUpdatedAtExpr), desc(latestIdExpr))
+        .limit(input.limit + 1);
+
+      const selectedGroups = groupPage.slice(0, input.limit);
+      const hasMore = groupPage.length > input.limit;
+      const lastGroup = selectedGroups[selectedGroups.length - 1];
+      const nextCursor = hasMore && lastGroup
+        ? {
+            updatedAt: new Date(lastGroup.latestUpdatedAt).toISOString(),
+            id: lastGroup.latestId,
+          }
+        : null;
+
+      if (selectedGroups.length === 0) {
+        return {
+          rows: [],
+          limit: input.limit,
+          hasMore,
+          nextCursor,
+        };
+      }
+
+      const selectedGroupCondition = or(
+        ...selectedGroups.map((group) =>
+          and(
+            eq(workflowPhases.workflowType, group.workflowType),
+            eq(workflowPhases.relatedId, group.relatedId),
+          ),
+        ),
+      );
 
       const rows = await ctx.db
         .select({
@@ -133,10 +270,8 @@ export const workflowsRouter = createTRPCRouter({
         })
         .from(workflowPhases)
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(workflowPhases.updatedAt))
-        .limit(input.limit)
-        .offset(input.offset);
+        .where(selectedGroupCondition)
+        .orderBy(desc(workflowPhases.updatedAt), desc(workflowPhases.id));
 
       // Enrich with context names for the related entity
       const pfcIds = rows
@@ -262,7 +397,7 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      return rows.map((row) => {
+      const enrichedRows = rows.map((row) => {
         const pfc = pfcMap.get(row.relatedId);
         const assignedName =
           row.assignedFirstName || row.assignedLastName
@@ -319,6 +454,13 @@ export const workflowsRouter = createTRPCRouter({
           supportingAgentIds: (row.supportingAgents as string[] | null) ?? [],
         };
       });
+
+      return {
+        rows: enrichedRows,
+        limit: input.limit,
+        hasMore,
+        nextCursor,
+      };
     }),
 
   /** List workflow phases for grouped view (provider/facility grouping, no row pagination). */
