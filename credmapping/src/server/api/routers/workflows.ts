@@ -42,14 +42,21 @@ export const workflowsRouter = createTRPCRouter({
         hasIncidents: z.boolean().default(false),
         search: z.string().optional(),
         limit: z.number().int().min(1).max(200).default(60),
-        offset: z.number().int().min(0).optional(),
-        cursor: z.number().int().min(0).optional(),
+        cursor: z
+          .object({
+            updatedAt: z.string().datetime(),
+            id: z.string().uuid(),
+          })
+          .optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       const conditions = [];
       const searchTerm = input.search?.trim();
-      const effectiveOffset = input.offset ?? input.cursor ?? 0;
+      const cursorUpdatedAt = input.cursor?.updatedAt
+        ? new Date(input.cursor.updatedAt)
+        : null;
+      const cursorId = input.cursor?.id ?? null;
 
       if (input.workflowType !== "all") {
         conditions.push(eq(workflowPhases.workflowType, input.workflowType));
@@ -73,9 +80,8 @@ export const workflowsRouter = createTRPCRouter({
           return {
             rows: [],
             limit: input.limit,
-            offset: effectiveOffset,
             hasMore: false,
-            nextOffset: null,
+            nextCursor: null,
           };
         }
       }
@@ -184,6 +190,62 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
+      const latestUpdatedAtExpr = sql<Date>`max(${workflowPhases.updatedAt})`;
+      const latestIdExpr = sql<string>`max(${workflowPhases.id}::text)`;
+
+      const groupPage = await ctx.db
+        .select({
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          latestUpdatedAt: latestUpdatedAtExpr.as("latest_updated_at"),
+          latestId: latestIdExpr.as("latest_id"),
+        })
+        .from(workflowPhases)
+        .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .groupBy(workflowPhases.workflowType, workflowPhases.relatedId)
+        .having(
+          cursorUpdatedAt && cursorId
+            ? or(
+                sql`${latestUpdatedAtExpr} < ${cursorUpdatedAt}`,
+                and(
+                  sql`${latestUpdatedAtExpr} = ${cursorUpdatedAt}`,
+                  sql`${latestIdExpr} < ${cursorId}`,
+                ),
+              )
+            : undefined,
+        )
+        .orderBy(desc(latestUpdatedAtExpr), desc(latestIdExpr))
+        .limit(input.limit + 1);
+
+      const selectedGroups = groupPage.slice(0, input.limit);
+      const hasMore = groupPage.length > input.limit;
+      const lastGroup = selectedGroups[selectedGroups.length - 1];
+      const nextCursor = hasMore && lastGroup
+        ? {
+            updatedAt: new Date(lastGroup.latestUpdatedAt).toISOString(),
+            id: lastGroup.latestId,
+          }
+        : null;
+
+      if (selectedGroups.length === 0) {
+        return {
+          rows: [],
+          limit: input.limit,
+          hasMore,
+          nextCursor,
+        };
+      }
+
+      const selectedGroupCondition = or(
+        ...selectedGroups.map((group) =>
+          and(
+            eq(workflowPhases.workflowType, group.workflowType),
+            eq(workflowPhases.relatedId, group.relatedId),
+          ),
+        ),
+      );
+
       const rows = await ctx.db
         .select({
           id: workflowPhases.id,
@@ -208,26 +270,20 @@ export const workflowsRouter = createTRPCRouter({
         })
         .from(workflowPhases)
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(workflowPhases.updatedAt))
-        .limit(input.limit + 1)
-        .offset(effectiveOffset);
-
-      const pageRows = rows.slice(0, input.limit);
-      const hasMore = rows.length > input.limit;
-      const nextOffset = hasMore ? effectiveOffset + input.limit : null;
+        .where(selectedGroupCondition)
+        .orderBy(desc(workflowPhases.updatedAt), desc(workflowPhases.id));
 
       // Enrich with context names for the related entity
-      const pfcIds = pageRows
+      const pfcIds = rows
         .filter((r) => r.workflowType === "pfc")
         .map((r) => r.relatedId);
-      const licenseIds = pageRows
+      const licenseIds = rows
         .filter((r) => r.workflowType === "state_licenses")
         .map((r) => r.relatedId);
-      const privIds = pageRows
+      const privIds = rows
         .filter((r) => r.workflowType === "provider_vesta_privileges")
         .map((r) => r.relatedId);
-      const preliveIds = pageRows
+      const preliveIds = rows
         .filter((r) => r.workflowType === "prelive_pipeline")
         .map((r) => r.relatedId);
 
@@ -341,7 +397,7 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      const enrichedRows = pageRows.map((row) => {
+      const enrichedRows = rows.map((row) => {
         const pfc = pfcMap.get(row.relatedId);
         const assignedName =
           row.assignedFirstName || row.assignedLastName
@@ -402,9 +458,8 @@ export const workflowsRouter = createTRPCRouter({
       return {
         rows: enrichedRows,
         limit: input.limit,
-        offset: effectiveOffset,
         hasMore,
-        nextOffset,
+        nextCursor,
       };
     }),
 

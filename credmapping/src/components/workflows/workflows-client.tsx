@@ -2240,8 +2240,7 @@ export default function WorkflowsClient() {
     {
       refetchOnWindowFocus: false,
       enabled: viewMode === "list",
-      initialCursor: 0,
-      getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     },
   );
 
