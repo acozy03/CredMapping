@@ -2254,7 +2254,6 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
-      search: search.trim() ? search.trim() : undefined,
     },
     { refetchOnWindowFocus: false, enabled: viewMode === "grouped" },
   );
