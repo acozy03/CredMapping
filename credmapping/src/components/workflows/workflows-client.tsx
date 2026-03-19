@@ -83,6 +83,14 @@ import { Label } from "~/components/ui/label";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 
 import { GroupedWorkflowsView } from "~/components/workflows/grouped-workflows-view";
+import {
+  formatDate,
+  isCompletedStatus,
+  isOverdue,
+  toStartOfDay,
+  WORKFLOW_TYPE_LABELS,
+  type WorkflowSortMode,
+} from "~/components/workflows/workflow-utils";
 
 type WorkflowPhaseInput = {
   phaseName: string;
@@ -91,6 +99,10 @@ type WorkflowPhaseInput = {
   status: string;
   agentAssigned: string;
   workflowNotes: string;
+};
+
+type WorkflowPhaseDraft = WorkflowPhaseInput & {
+  clientKey: string;
 };
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -118,13 +130,6 @@ function getPfcPhaseSortIndex(phaseName: string): number {
   return phaseIndex === -1 ? Number.POSITIVE_INFINITY : phaseIndex;
 }
 
-const WORKFLOW_TYPE_LABELS: Record<string, string> = {
-  pfc: "PFC",
-  state_licenses: "State Licenses",
-  prelive_pipeline: "Pre-Live Pipeline",
-  provider_vesta_privileges: "Vesta Privileges",
-};
-
 const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
   pfc: "border-violet-500/40 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.12)]",
   state_licenses:
@@ -139,11 +144,6 @@ const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
 
 type WorkflowViewMode = "list" | "grouped";
-type WorkflowSortMode =
-  | "date_assigned_desc"
-  | "date_assigned_asc"
-  | "date_started_desc"
-  | "date_started_asc";
 
 type WorkflowsFiltersSheetProps = {
   workflowType: string;
@@ -341,31 +341,6 @@ function WorkflowTypeBadge({ type }: { type: string }) {
   return <Badge className={cn("gap-1", colorMap[type] ?? "")}>{label}</Badge>;
 }
 
-function formatDate(d: string | Date | null | undefined): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function isCompletedStatus(status: string | null | undefined): boolean {
-  const normalized = (status ?? "").toLowerCase();
-  return (
-    normalized.includes("complet") ||
-    normalized === "done" ||
-    normalized === "approved"
-  );
-}
-
-function toStartOfDay(value: string | Date): Date {
-  const date = typeof value === "string" ? new Date(value) : new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
 function getDueTone(dueDate: string | Date | null | undefined): DueTone {
   if (!dueDate) return "safe";
 
@@ -394,6 +369,21 @@ function getWorkflowDueTone(
     .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return nextDue ? getDueTone(nextDue) : "safe";
+}
+
+function createPhaseDraft(
+  phaseName: string,
+  clientKey: string,
+): WorkflowPhaseDraft {
+  return {
+    clientKey,
+    phaseName,
+    startDate: new Date().toISOString().split("T")[0]!,
+    dueDate: "",
+    status: "Pending",
+    agentAssigned: "",
+    workflowNotes: "",
+  };
 }
 
 function WorkflowAutoAdvance({
@@ -554,7 +544,7 @@ function IncidentDialog({
     onError: (e) => toast.error(String(e.message)),
   });
 
-  const isPending = createMutation.isPending ?? updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending;
 
   function reset() {
     setSubcategory(incident?.subcategory ?? "");
@@ -1292,41 +1282,27 @@ function AddWorkflowDialog() {
     "Inactive" | "Full" | "Temp" | "In Progress" | undefined
   >("In Progress");
 
-  const [phases, setPhases] = useState<WorkflowPhaseInput[]>(() =>
-    PFC_PHASES.map((name) => ({
-      phaseName: name,
-      startDate: new Date().toISOString().split("T")[0]!,
-      dueDate: "",
-      status: "Pending",
-      agentAssigned: "",
-      workflowNotes: "",
-    })),
+  const phaseKeyCounterRef = useRef(0);
+  const getNextPhaseKey = () => `phase-${phaseKeyCounterRef.current++}`;
+
+  const [phases, setPhases] = useState<WorkflowPhaseDraft[]>(() =>
+    PFC_PHASES.map((name) =>
+      createPhaseDraft(name, `phase-${phaseKeyCounterRef.current++}`),
+    ),
   );
 
   // Update logic when workflow type changes
   useEffect(() => {
     if (workflowType === "pfc") {
       setPhases(
-        PFC_PHASES.map((name) => ({
-          phaseName: name,
-          startDate: new Date().toISOString().split("T")[0]!,
-          dueDate: "",
-          status: "Pending",
-          agentAssigned: "",
-          workflowNotes: "",
-        })),
+        PFC_PHASES.map((name) => createPhaseDraft(name, getNextPhaseKey())),
       );
     } else {
       // Default to 3 generic phases for other types
       setPhases(
-        [1, 2, 3].map((num) => ({
-          phaseName: `Phase ${num}`,
-          startDate: new Date().toISOString().split("T")[0]!,
-          dueDate: "",
-          status: "Pending",
-          agentAssigned: "",
-          workflowNotes: "",
-        })),
+        [1, 2, 3].map((num) =>
+          createPhaseDraft(`Phase ${num}`, getNextPhaseKey()),
+        ),
       );
     }
   }, [workflowType]);
@@ -1336,30 +1312,24 @@ function AddWorkflowDialog() {
     field: K,
     value: WorkflowPhaseInput[K],
   ) => {
-    const nextPhases = [...phases];
-    const targetPhase = nextPhases[index];
-    if (targetPhase) {
-      targetPhase[field] = value;
-      setPhases(nextPhases);
-    }
+    setPhases((current) =>
+      current.map((phase, phaseIndex) =>
+        phaseIndex === index ? { ...phase, [field]: value } : phase,
+      ),
+    );
   };
 
   const addPhase = () => {
-    setPhases([
-      ...phases,
-      {
-        phaseName: `Phase ${phases.length + 1}`,
-        startDate: new Date().toISOString().split("T")[0]!,
-        dueDate: "",
-        status: "Pending",
-        agentAssigned: "",
-        workflowNotes: "",
-      },
+    setPhases((current) => [
+      ...current,
+      createPhaseDraft(`Phase ${current.length + 1}`, getNextPhaseKey()),
     ]);
   };
 
   const removePhase = (indexToRemove: number) => {
-    setPhases(phases.filter((_, index) => index !== indexToRemove));
+    setPhases((current) =>
+      current.filter((_, index) => index !== indexToRemove),
+    );
   };
 
   const { data: providers = [], isLoading: isLoadingProviders } =
@@ -1423,14 +1393,7 @@ function AddWorkflowDialog() {
     setVestaPrivilegeTier("In Progress");
 
     setPhases(
-      PFC_PHASES.map((name) => ({
-        phaseName: name,
-        startDate: new Date().toISOString().split("T")[0]!,
-        dueDate: "",
-        status: "Pending",
-        agentAssigned: "",
-        workflowNotes: "",
-      })),
+      PFC_PHASES.map((name) => createPhaseDraft(name, getNextPhaseKey())),
     );
   }
 
@@ -1457,8 +1420,10 @@ function AddWorkflowDialog() {
       providerId: needsProvider ? providerId : undefined,
       facilityId: needsFacility ? facilityId : undefined,
       phases: phases.map((p) => ({
-        ...p,
+        phaseName: p.phaseName,
+        startDate: p.startDate,
         dueDate: p.dueDate || undefined,
+        status: p.status,
         agentAssigned: p.agentAssigned || undefined,
         workflowNotes: p.workflowNotes || undefined,
       })),
@@ -2073,8 +2038,8 @@ function AddWorkflowDialog() {
               {phases && phases.length > 0 ? (
                 phases.map((phase, index) => (
                   <AccordionItem
-                    key={index}
-                    value={`phase-${index}`}
+                    key={phase.clientKey}
+                    value={phase.clientKey}
                     className="w-full border-b px-3 last:border-b-0"
                   >
                     <div className="flex w-full items-center gap-2 [&>h3]:flex-1">
@@ -2320,8 +2285,7 @@ export default function WorkflowsClient() {
       const key = `${wf.workflowType}:${wf.relatedId}`;
       const statusLower = (wf.status ?? "").toLowerCase();
       const isDone = isCompletedStatus(wf.status);
-      const isOverdue =
-        !!wf.dueDate && new Date(String(wf.dueDate)) < new Date() && !isDone;
+      const wfIsOverdue = isOverdue(wf.dueDate, wf.status);
       const isBlocked = statusLower === "blocked";
       const phaseIncidents =
         typeof wf.incidentCount === "number" ? wf.incidentCount : 0;
@@ -2332,7 +2296,7 @@ export default function WorkflowsClient() {
         existing.totalCount++;
         existing.incidentCount += phaseIncidents;
         if (isDone) existing.completedCount++;
-        if (isOverdue) existing.hasOverdue = true;
+        if (wfIsOverdue) existing.hasOverdue = true;
         if (isBlocked) existing.hasBlocked = true;
         if (
           wf.startDate &&
@@ -2371,7 +2335,7 @@ export default function WorkflowsClient() {
           latestUpdate: wf.updatedAt,
           latestStartDate: wf.startDate,
           latestAssignedDate: wf.createdAt,
-          hasOverdue: isOverdue,
+          hasOverdue: wfIsOverdue,
           hasBlocked: isBlocked,
         });
       }
@@ -2667,11 +2631,7 @@ export default function WorkflowsClient() {
                                 {phase.dueDate ? (
                                   <span
                                     className={
-                                      new Date(String(phase.dueDate)) <
-                                        new Date() &&
-                                      !(phase.status ?? "")
-                                        .toLowerCase()
-                                        .includes("complet")
+                                      isOverdue(phase.dueDate, phase.status)
                                         ? "font-medium text-red-500"
                                         : ""
                                     }
@@ -2720,11 +2680,7 @@ export default function WorkflowsClient() {
           <span>
             {
               filteredPhases.filter((w) => {
-                const status = (w.status ?? "").toLowerCase();
-                return (
-                  Boolean(status.includes("complet")) ||
-                  Boolean(status === "done")
-                );
+                return isCompletedStatus(w.status);
               }).length
             }{" "}
             completed
@@ -2742,11 +2698,7 @@ export default function WorkflowsClient() {
           <span>
             {
               filteredPhases.filter((w) => {
-                return Boolean(
-                  w.dueDate &&
-                  new Date(String(w.dueDate)) < new Date() &&
-                  !(w.status ?? "").toLowerCase().includes("complet"),
-                );
+                return Boolean(isOverdue(w.dueDate, w.status));
               }).length
             }{" "}
             overdue

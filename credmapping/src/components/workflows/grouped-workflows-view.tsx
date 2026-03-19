@@ -27,6 +27,13 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import {
+  formatDate,
+  isCompletedStatus,
+  isOverdue,
+  WORKFLOW_TYPE_LABELS,
+  type WorkflowSortMode,
+} from "~/components/workflows/workflow-utils";
 import { cn } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 
@@ -50,25 +57,12 @@ type RelatedWorkflowGroup = {
   rows: WorkflowListRow[];
 };
 
-type WorkflowSortMode =
-  | "date_assigned_desc"
-  | "date_assigned_asc"
-  | "date_started_desc"
-  | "date_started_asc";
-
 type GroupedWorkflowsViewProps = {
   rows: WorkflowListRow[];
   sortBy: WorkflowSortMode;
   onOpenWorkflow: (id: string) => void;
   onClaimWorkflow: (id: string) => void;
   claimPending: boolean;
-};
-
-const WORKFLOW_TYPE_LABELS: Record<string, string> = {
-  pfc: "Facility Credentials",
-  state_licenses: "State Licenses",
-  prelive_pipeline: "Pre-Live Pipeline",
-  provider_vesta_privileges: "Vesta Privileges",
 };
 
 function getWorkflowTypeLabel(workflowType: string) {
@@ -90,15 +84,6 @@ function sortRows(rows: WorkflowListRow[], sortBy: WorkflowSortMode) {
     if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
     return bAssigned - aAssigned;
   });
-}
-
-function isCompletedStatus(status: string | null | undefined) {
-  const normalized = (status ?? "").toLowerCase();
-  return (
-    normalized.includes("complet") ||
-    normalized === "done" ||
-    normalized === "approved"
-  );
 }
 
 function getRelatedWorkflowLabel(row: WorkflowListRow) {
@@ -141,26 +126,18 @@ function getRelatedWorkflowSortTimestamp(
   const isAscendingSort =
     sortBy === "date_started_asc" || sortBy === "date_assigned_asc";
 
-  return group.rows.reduce((candidateTimestamp, row) => {
-    const value = isStartedSort ? row.startDate : row.createdAt;
-    const timestamp = value ? new Date(value).getTime() : 0;
-    const normalizedTimestamp = Number.isNaN(timestamp) ? 0 : timestamp;
+  return group.rows.reduce(
+    (candidateTimestamp, row) => {
+      const value = isStartedSort ? row.startDate : row.createdAt;
+      const timestamp = value ? new Date(value).getTime() : 0;
+      const normalizedTimestamp = Number.isNaN(timestamp) ? 0 : timestamp;
 
-    return isAscendingSort
-      ? Math.min(candidateTimestamp, normalizedTimestamp)
-      : Math.max(candidateTimestamp, normalizedTimestamp);
-  }, isAscendingSort ? Number.POSITIVE_INFINITY : 0);
-}
-
-function formatDate(d: string | Date | null | undefined): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+      return isAscendingSort
+        ? Math.min(candidateTimestamp, normalizedTimestamp)
+        : Math.max(candidateTimestamp, normalizedTimestamp);
+    },
+    isAscendingSort ? Number.POSITIVE_INFINITY : 0,
+  );
 }
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -409,10 +386,10 @@ function GroupedWorkflowsDetailPane({
                       </TableHeader>
                       <TableBody>
                         {relatedGroup.rows.map((row) => {
-                          const isOverdue =
-                            !!row.dueDate &&
-                            new Date(String(row.dueDate)) < new Date() &&
-                            !isCompletedStatus(row.status);
+                          const rowIsOverdue = isOverdue(
+                            row.dueDate,
+                            row.status,
+                          );
 
                           return (
                             <TableRow
@@ -465,7 +442,7 @@ function GroupedWorkflowsDetailPane({
                               <TableCell
                                 className={cn(
                                   "text-xs",
-                                  isOverdue
+                                  rowIsOverdue
                                     ? "font-medium text-red-500"
                                     : "text-muted-foreground",
                                 )}
