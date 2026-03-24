@@ -84,6 +84,7 @@ import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container
 
 import { GroupedWorkflowsView } from "~/components/workflows/grouped-workflows-view";
 import {
+  compareWorkflowPhaseOrder,
   formatDate,
   isCompletedStatus,
   isOverdue,
@@ -124,11 +125,6 @@ const PFC_PHASES = [
   "Provider QA",
   "Facility Decision",
 ];
-
-function getPfcPhaseSortIndex(phaseName: string): number {
-  const phaseIndex = PFC_PHASES.indexOf(phaseName);
-  return phaseIndex === -1 ? Number.POSITIVE_INFINITY : phaseIndex;
-}
 
 const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
   pfc: "border-violet-500/40 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.12)]",
@@ -1339,6 +1335,10 @@ function ManageWorkflowPhasesSheet({
   const [newPhaseStartDate, setNewPhaseStartDate] = useState("");
   const [newPhaseDueDate, setNewPhaseDueDate] = useState("");
   const [newPhaseNotes, setNewPhaseNotes] = useState("");
+  const sortedGroupPhases = useMemo(
+    () => [...groupPhases].sort(compareWorkflowPhaseOrder),
+    [groupPhases],
+  );
 
   const addPhaseMutation = api.workflows.addPhaseToWorkflowGroup.useMutation({
     onSuccess: (created) => {
@@ -1412,7 +1412,7 @@ function ManageWorkflowPhasesSheet({
           <div className="space-y-3 rounded-md border p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">Workflow Group Phase List</p>
-              <Badge variant="secondary">{groupPhases.length} phases</Badge>
+              <Badge variant="secondary">{sortedGroupPhases.length} phases</Badge>
             </div>
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
@@ -1420,7 +1420,7 @@ function ManageWorkflowPhasesSheet({
               </div>
             ) : (
               <div className="space-y-2">
-                {groupPhases.map((phase, index) => {
+                {sortedGroupPhases.map((phase, index) => {
                   const assigned = phase.assignedFirstName
                     ? `${phase.assignedFirstName} ${phase.assignedLastName ?? ""}`.trim()
                     : "Unassigned";
@@ -1454,7 +1454,7 @@ function ManageWorkflowPhasesSheet({
                         className="text-destructive hover:bg-destructive/10"
                         disabled={
                           deletePhaseMutation.isPending ||
-                          groupPhases.length <= 1
+                          sortedGroupPhases.length <= 1
                         }
                         onClick={() =>
                           handleDeletePhase(
@@ -3218,13 +3218,7 @@ export default function WorkflowsClient() {
                   : 0;
               const dueTone = getWorkflowDueTone(group.phases);
               const expandedPhases =
-                group.workflowType === "pfc"
-                  ? [...group.phases].sort(
-                      (a, b) =>
-                        getPfcPhaseSortIndex(String(a.phaseName)) -
-                        getPfcPhaseSortIndex(String(b.phaseName)),
-                    )
-                  : group.phases;
+                [...group.phases].sort(compareWorkflowPhaseOrder);
 
               return (
                 <div
