@@ -969,6 +969,95 @@ export const workflowsRouter = createTRPCRouter({
       return created;
     }),
 
+  reorderWorkflowPhases: protectedProcedure
+    .input(
+      z.object({
+        workflowType: z.enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges"]),
+        relatedId: z.string().uuid(),
+        orderedPhaseIds: z.array(z.string().uuid()).min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const actor = await resolveAgentId(ctx.db, ctx.user.id);
+
+      const groupPhases = await ctx.db
+        .select()
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, input.workflowType),
+            eq(workflowPhases.relatedId, input.relatedId),
+          ),
+        );
+
+      if (groupPhases.length === 0) {
+        throw new Error("Workflow group not found.");
+      }
+
+      const uniqueOrderedIds = new Set(input.orderedPhaseIds);
+      if (uniqueOrderedIds.size !== input.orderedPhaseIds.length) {
+        throw new Error("orderedPhaseIds contains duplicate phase ids.");
+      }
+
+      const groupIdSet = new Set(groupPhases.map((phase) => phase.id));
+      if (groupIdSet.size !== input.orderedPhaseIds.length) {
+        throw new Error("orderedPhaseIds must include every phase in the workflow group.");
+      }
+
+      for (const phaseId of input.orderedPhaseIds) {
+        if (!groupIdSet.has(phaseId)) {
+          throw new Error("orderedPhaseIds must match the workflow group exactly.");
+        }
+      }
+
+      const oldById = new Map(groupPhases.map((phase) => [phase.id, phase]));
+
+      const updatedPhases = await ctx.db.transaction(async (tx) => {
+        const updatedRows: InferSelectModel<typeof workflowPhases>[] = [];
+
+        for (const [index, phaseId] of input.orderedPhaseIds.entries()) {
+          const [updated] = await tx
+            .update(workflowPhases)
+            .set({
+              phaseNumber: index + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(workflowPhases.id, phaseId))
+            .returning();
+
+          if (!updated) {
+            throw new Error("Failed to update workflow phase order.");
+          }
+
+          const oldData = oldById.get(phaseId);
+          if (!oldData) {
+            throw new Error("Workflow phase not found in group.");
+          }
+
+          await writeAuditLog(tx, {
+            tableName: "workflow_phases",
+            recordId: updated.id,
+            action: "update",
+            actorId: actor?.id ?? null,
+            actorEmail: actor?.email ?? ctx.user.email ?? null,
+            oldData: oldData as unknown as Record<string, unknown>,
+            newData: updated as unknown as Record<string, unknown>,
+          });
+
+          updatedRows.push(updated);
+        }
+
+        return updatedRows;
+      });
+
+      return {
+        success: true,
+        workflowType: input.workflowType,
+        relatedId: input.relatedId,
+        phases: updatedPhases,
+      };
+    }),
+
   deleteWorkflowPhase: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
