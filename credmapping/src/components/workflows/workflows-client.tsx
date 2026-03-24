@@ -1272,6 +1272,7 @@ function WorkflowDetailSheet({
       setNewPhaseNotes("");
       onSelectWorkflow(String(created.id));
       void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
       void utils.workflows.getById.invalidate({ id: String(created.id) });
       void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
       void utils.workflows.listWorkflowGroupPhases.invalidate({
