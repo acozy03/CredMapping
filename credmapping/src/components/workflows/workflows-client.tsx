@@ -1327,7 +1327,7 @@ function ManageWorkflowPhasesSheet({
   const utils = api.useUtils();
   const { data: groupPhases = [], isLoading } =
     api.workflows.listWorkflowGroupPhases.useQuery(
-      { workflowId },
+      { workflowId, workflowType, relatedId },
       { enabled: open && Boolean(workflowId) },
     );
 
@@ -1352,9 +1352,15 @@ function ManageWorkflowPhasesSheet({
       void utils.workflows.list.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
       void utils.workflows.getById.invalidate({ id: String(created.id) });
-      void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId,
+        workflowType,
+        relatedId,
+      });
       void utils.workflows.listWorkflowGroupPhases.invalidate({
         workflowId: String(created.id),
+        workflowType,
+        relatedId,
       });
     },
     onError: (e) => toast.error(String(e.message)),
@@ -1365,7 +1371,11 @@ function ManageWorkflowPhasesSheet({
       toast.success("Phase deleted.");
       void utils.workflows.list.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
-      void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId,
+        workflowType,
+        relatedId,
+      });
     },
     onError: (e) => toast.error(String(e.message)),
   });
@@ -3197,6 +3207,16 @@ export default function WorkflowsClient() {
           onOpenWorkflow={setSelectedId}
           onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
           onManagePhases={setPhaseManagerGroup}
+          renderRelatedWorkflowActions={({ relatedWorkflow }) => (
+            <BulkIncidentDialog
+              phases={relatedWorkflow.rows.map((row) => ({
+                id: String(row.id),
+                phaseName: String(row.phaseName),
+              }))}
+              agents={agentList}
+              onSuccess={() => void utils.workflows.list.invalidate()}
+            />
+          )}
         />
       ) : (
         <VirtualScrollContainer
@@ -3350,7 +3370,15 @@ export default function WorkflowsClient() {
                               onClick={() => setSelectedId(String(phase.id))}
                             >
                               <TableCell className="font-medium">
-                                {String(phase.phaseName)}
+                                <span className="inline-flex items-center gap-1.5">
+                                  {String(phase.phaseName)}
+                                  {Number(phase.incidentCount ?? 0) > 0 && (
+                                    <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 px-1.5 py-0 text-[10px] text-orange-600">
+                                      <AlertTriangle className="size-2.5" />
+                                      {phase.incidentCount}
+                                    </Badge>
+                                  )}
+                                </span>
                               </TableCell>
                               <TableCell>
                                 <StatusBadge status={phase.status} />
