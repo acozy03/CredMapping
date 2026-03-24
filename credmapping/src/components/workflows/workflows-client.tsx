@@ -1337,10 +1337,43 @@ function ManageWorkflowPhasesSheet({
   const [newPhaseStartDate, setNewPhaseStartDate] = useState("");
   const [newPhaseDueDate, setNewPhaseDueDate] = useState("");
   const [newPhaseNotes, setNewPhaseNotes] = useState("");
-  const sortedGroupPhases = useMemo(
+  const serverSortedGroupPhases = useMemo(
     () => [...groupPhases].sort(compareWorkflowPhaseOrder),
     [groupPhases],
   );
+  const [orderedGroupPhases, setOrderedGroupPhases] = useState<
+    typeof serverSortedGroupPhases
+  >([]);
+  const [hasLocalReorderSession, setHasLocalReorderSession] = useState(false);
+
+  const hasUnsavedOrderChanges = useMemo(() => {
+    if (orderedGroupPhases.length !== serverSortedGroupPhases.length) {
+      return true;
+    }
+
+    return orderedGroupPhases.some(
+      (phase, index) =>
+        String(phase.id) !== String(serverSortedGroupPhases[index]?.id),
+    );
+  }, [orderedGroupPhases, serverSortedGroupPhases]);
+
+  useEffect(() => {
+    if (!open) {
+      setOrderedGroupPhases(serverSortedGroupPhases);
+      setHasLocalReorderSession(false);
+      return;
+    }
+
+    if (!hasLocalReorderSession) {
+      setOrderedGroupPhases(serverSortedGroupPhases);
+    }
+  }, [open, serverSortedGroupPhases, hasLocalReorderSession]);
+
+  useEffect(() => {
+    if (!hasUnsavedOrderChanges && hasLocalReorderSession) {
+      setHasLocalReorderSession(false);
+    }
+  }, [hasUnsavedOrderChanges, hasLocalReorderSession]);
 
   const addPhaseMutation = api.workflows.addPhaseToWorkflowGroup.useMutation({
     onSuccess: (created) => {
@@ -1385,6 +1418,7 @@ function ManageWorkflowPhasesSheet({
   const reorderPhasesMutation = api.workflows.reorderWorkflowPhases.useMutation({
     onSuccess: (_, variables) => {
       toast.success("Phase order updated.");
+      setHasLocalReorderSession(false);
       void utils.workflows.list.invalidate();
       void utils.workflows.getById.invalidate({ id: workflowId });
       for (const phaseId of variables.orderedPhaseIds) {
@@ -1418,18 +1452,27 @@ function ManageWorkflowPhasesSheet({
 
   function handleMovePhase(index: number, direction: "up" | "down") {
     const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= sortedGroupPhases.length) return;
+    if (targetIndex < 0 || targetIndex >= orderedGroupPhases.length) return;
 
-    const reordered = [...sortedGroupPhases];
+    const reordered = [...orderedGroupPhases];
     const [movedPhase] = reordered.splice(index, 1);
     if (!movedPhase) return;
     reordered.splice(targetIndex, 0, movedPhase);
+    setOrderedGroupPhases(reordered);
+    setHasLocalReorderSession(true);
+  }
 
+  function handleSaveOrder() {
     reorderPhasesMutation.mutate({
       workflowType,
       relatedId,
-      orderedPhaseIds: reordered.map((phase) => String(phase.id)),
+      orderedPhaseIds: orderedGroupPhases.map((phase) => String(phase.id)),
     });
+  }
+
+  function handleCancelReorder() {
+    setOrderedGroupPhases(serverSortedGroupPhases);
+    setHasLocalReorderSession(false);
   }
 
   return (
@@ -1447,7 +1490,31 @@ function ManageWorkflowPhasesSheet({
           <div className="space-y-3 rounded-md border p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">Workflow Group Phase List</p>
-              <Badge variant="secondary">{sortedGroupPhases.length} phases</Badge>
+              <div className="flex items-center gap-2">
+                {hasUnsavedOrderChanges && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelReorder}
+                      disabled={reorderPhasesMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveOrder}
+                      disabled={reorderPhasesMutation.isPending}
+                    >
+                      {reorderPhasesMutation.isPending && (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      )}
+                      Save Order
+                    </Button>
+                  </>
+                )}
+                <Badge variant="secondary">{orderedGroupPhases.length} phases</Badge>
+              </div>
             </div>
             {isLoading ? (
               <div className="flex items-center justify-center py-10">
@@ -1455,7 +1522,7 @@ function ManageWorkflowPhasesSheet({
               </div>
             ) : (
               <div className="space-y-2">
-                {sortedGroupPhases.map((phase, index) => {
+                {orderedGroupPhases.map((phase, index) => {
                   const assigned = phase.assignedFirstName
                     ? `${phase.assignedFirstName} ${phase.assignedLastName ?? ""}`.trim()
                     : "Unassigned";
@@ -1496,7 +1563,7 @@ function ManageWorkflowPhasesSheet({
                         variant="ghost"
                         disabled={
                           reorderPhasesMutation.isPending ||
-                          index === sortedGroupPhases.length - 1
+                          index === orderedGroupPhases.length - 1
                         }
                         onClick={() => handleMovePhase(index, "down")}
                       >
@@ -1509,7 +1576,7 @@ function ManageWorkflowPhasesSheet({
                         disabled={
                           reorderPhasesMutation.isPending ||
                           deletePhaseMutation.isPending ||
-                          sortedGroupPhases.length <= 1
+                          orderedGroupPhases.length <= 1
                         }
                         onClick={() =>
                           handleDeletePhase(
