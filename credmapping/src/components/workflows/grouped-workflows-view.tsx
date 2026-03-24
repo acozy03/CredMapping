@@ -1,7 +1,14 @@
 "use client";
 
-import { Building2, Search, User, UserPlus, Workflow } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Building2,
+  Search,
+  User,
+  UserPlus,
+  Workflow,
+} from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import {
@@ -71,6 +78,9 @@ type GroupedWorkflowsViewProps = {
     relatedId: string;
     contextLabel: string;
   }) => void;
+  renderRelatedWorkflowActions?: (input: {
+    relatedWorkflow: RelatedWorkflowGroup;
+  }) => ReactNode;
   claimPending: boolean;
 };
 
@@ -261,6 +271,7 @@ function GroupedWorkflowsDetailPane({
   onOpenWorkflow,
   onClaimWorkflow,
   onManagePhases,
+  renderRelatedWorkflowActions,
   claimPending,
   detailSearch,
   onDetailSearchChange,
@@ -272,6 +283,7 @@ function GroupedWorkflowsDetailPane({
   onOpenWorkflow: (id: string) => void;
   onClaimWorkflow: (id: string) => void;
   onManagePhases: GroupedWorkflowsViewProps["onManagePhases"];
+  renderRelatedWorkflowActions?: GroupedWorkflowsViewProps["renderRelatedWorkflowActions"];
   claimPending: boolean;
   detailSearch: string;
   onDetailSearchChange: (value: string) => void;
@@ -398,30 +410,37 @@ function GroupedWorkflowsDetailPane({
                   </AccordionTrigger>
                   <AccordionContent className="pb-3">
                     <div className="mb-2 flex justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const representativeRow = relatedGroup.rows[0];
-                          if (!representativeRow) return;
-                          const workflowType = String(
-                            representativeRow.workflowType,
-                          );
-                          if (!isManagePhasesWorkflowType(workflowType)) return;
-                          const contextLabel =
-                            String(representativeRow.contextLabel ?? "").trim() ||
-                            relatedGroup.label;
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const representativeRow = relatedGroup.rows[0];
+                            if (!representativeRow) return;
+                            const workflowType = String(
+                              representativeRow.workflowType,
+                            );
+                            if (!isManagePhasesWorkflowType(workflowType))
+                              return;
+                            const contextLabel =
+                              String(
+                                representativeRow.contextLabel ?? "",
+                              ).trim() || relatedGroup.label;
 
-                          onManagePhases({
-                            workflowId: String(representativeRow.id),
-                            workflowType,
-                            relatedId: String(relatedGroup.relatedId),
-                            contextLabel,
-                          });
-                        }}
-                      >
-                        Manage Phases
-                      </Button>
+                            onManagePhases({
+                              workflowId: String(representativeRow.id),
+                              workflowType,
+                              relatedId: String(relatedGroup.relatedId),
+                              contextLabel,
+                            });
+                          }}
+                        >
+                          Manage Phases
+                        </Button>
+                        {renderRelatedWorkflowActions?.({
+                          relatedWorkflow: relatedGroup,
+                        })}
+                      </div>
                     </div>
                     <Table>
                       <TableHeader>
@@ -452,7 +471,15 @@ function GroupedWorkflowsDetailPane({
                               onClick={() => onOpenWorkflow(String(row.id))}
                             >
                               <TableCell className="font-medium">
-                                {String(row.phaseName)}
+                                <span className="inline-flex items-center gap-1.5">
+                                  {String(row.phaseName)}
+                                  {Number(row.incidentCount ?? 0) > 0 && (
+                                    <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 px-1.5 py-0 text-[10px] text-orange-600">
+                                      <AlertTriangle className="size-2.5" />
+                                      {row.incidentCount}
+                                    </Badge>
+                                  )}
+                                </span>
                               </TableCell>
                               <TableCell className="text-xs">
                                 {getWorkflowTypeLabel(String(row.workflowType))}
@@ -534,6 +561,7 @@ export function GroupedWorkflowsView({
   onOpenWorkflow,
   onClaimWorkflow,
   onManagePhases,
+  renderRelatedWorkflowActions,
   claimPending,
 }: GroupedWorkflowsViewProps) {
   const [groupBy, setGroupBy] = useState<GroupByMode>("provider");
@@ -700,6 +728,7 @@ export function GroupedWorkflowsView({
             onOpenWorkflow={onOpenWorkflow}
             onClaimWorkflow={onClaimWorkflow}
             onManagePhases={onManagePhases}
+            renderRelatedWorkflowActions={renderRelatedWorkflowActions}
             claimPending={claimPending}
             detailSearch={detailSearch}
             onDetailSearchChange={setDetailSearch}

@@ -372,18 +372,38 @@ export const workflowsRouter = createTRPCRouter({
 
   /** List all phases in the same workflow group as a given phase id */
   listWorkflowGroupPhases: protectedProcedure
-    .input(z.object({ workflowId: z.string().uuid() }))
+    .input(
+      z.object({
+        workflowId: z.string().uuid(),
+        workflowType: z
+          .enum([
+            "pfc",
+            "state_licenses",
+            "prelive_pipeline",
+            "provider_vesta_privileges",
+          ])
+          .optional(),
+        relatedId: z.string().uuid().optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
-      const [basePhase] = await ctx.db
-        .select({
-          workflowType: workflowPhases.workflowType,
-          relatedId: workflowPhases.relatedId,
-        })
-        .from(workflowPhases)
-        .where(eq(workflowPhases.id, input.workflowId))
-        .limit(1);
+      let groupWorkflowType = input.workflowType;
+      let groupRelatedId = input.relatedId;
 
-      if (!basePhase) throw new Error("Workflow phase not found.");
+      if (!groupWorkflowType || !groupRelatedId) {
+        const [basePhase] = await ctx.db
+          .select({
+            workflowType: workflowPhases.workflowType,
+            relatedId: workflowPhases.relatedId,
+          })
+          .from(workflowPhases)
+          .where(eq(workflowPhases.id, input.workflowId))
+          .limit(1);
+
+        if (!basePhase) throw new Error("Workflow phase not found.");
+        groupWorkflowType = basePhase.workflowType;
+        groupRelatedId = basePhase.relatedId;
+      }
 
       const rows = await ctx.db
         .select({
@@ -406,8 +426,8 @@ export const workflowsRouter = createTRPCRouter({
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
         .where(
           and(
-            eq(workflowPhases.workflowType, basePhase.workflowType),
-            eq(workflowPhases.relatedId, basePhase.relatedId),
+            eq(workflowPhases.workflowType, groupWorkflowType),
+            eq(workflowPhases.relatedId, groupRelatedId),
           ),
         )
         .orderBy(asc(workflowPhases.createdAt), asc(workflowPhases.phaseName));
