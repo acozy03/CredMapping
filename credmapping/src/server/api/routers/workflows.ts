@@ -123,8 +123,127 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      if (input.search) {
-        conditions.push(ilike(workflowPhases.phaseName, `%${input.search}%`));
+      const trimmedSearch = input.search?.trim();
+      if (trimmedSearch) {
+        const searchTerm = `%${trimmedSearch}%`;
+        const matchingGroups = ctx.db
+          .selectDistinct({
+            workflowType: workflowPhases.workflowType,
+            relatedId: workflowPhases.relatedId,
+          })
+          .from(workflowPhases)
+          .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+          .where(
+            or(
+              ilike(workflowPhases.phaseName, searchTerm),
+              ilike(
+                sql`coalesce(${agents.firstName}, '') || ' ' || coalesce(${agents.lastName}, '')`,
+                searchTerm,
+              ),
+              ilike(
+                sql`case
+                  when ${workflowPhases.workflowType} = 'pfc' then 'PFC'
+                  when ${workflowPhases.workflowType} = 'state_licenses' then 'State Licenses'
+                  when ${workflowPhases.workflowType} = 'prelive_pipeline' then 'Pre-Live Pipeline'
+                  when ${workflowPhases.workflowType} = 'provider_vesta_privileges' then 'Vesta Privileges'
+                  else ${workflowPhases.workflowType}
+                end`,
+                searchTerm,
+              ),
+              and(
+                eq(workflowPhases.workflowType, "pfc"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(providerFacilityCredentials)
+                    .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+                    .leftJoin(facilities, eq(providerFacilityCredentials.facilityId, facilities.id))
+                    .where(
+                      and(
+                        eq(providerFacilityCredentials.id, workflowPhases.relatedId),
+                        or(
+                          ilike(
+                            sql`coalesce(${providers.firstName}, '') || ' ' || coalesce(${providers.lastName}, '')`,
+                            searchTerm,
+                          ),
+                          ilike(facilities.name, searchTerm),
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+              and(
+                eq(workflowPhases.workflowType, "state_licenses"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(providerStateLicenses)
+                    .leftJoin(providers, eq(providerStateLicenses.providerId, providers.id))
+                    .where(
+                      and(
+                        eq(providerStateLicenses.id, workflowPhases.relatedId),
+                        or(
+                          ilike(
+                            sql`coalesce(${providers.firstName}, '') || ' ' || coalesce(${providers.lastName}, '')`,
+                            searchTerm,
+                          ),
+                          ilike(providerStateLicenses.state, searchTerm),
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+              and(
+                eq(workflowPhases.workflowType, "prelive_pipeline"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(facilityPreliveInfo)
+                    .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+                    .where(
+                      and(
+                        eq(facilityPreliveInfo.id, workflowPhases.relatedId),
+                        ilike(facilities.name, searchTerm),
+                      ),
+                    ),
+                ),
+              ),
+              and(
+                eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(providerVestaPrivileges)
+                    .leftJoin(providers, eq(providerVestaPrivileges.providerId, providers.id))
+                    .where(
+                      and(
+                        eq(providerVestaPrivileges.id, workflowPhases.relatedId),
+                        ilike(
+                          sql`coalesce(${providers.firstName}, '') || ' ' || coalesce(${providers.lastName}, '')`,
+                          searchTerm,
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+            ),
+          );
+
+        const matchingGroupsSubquery = matchingGroups.as("matching_groups");
+
+        conditions.push(
+          exists(
+            ctx.db
+              .select({ one: sql`1` })
+              .from(matchingGroupsSubquery)
+              .where(
+                and(
+                  eq(matchingGroupsSubquery.workflowType, workflowPhases.workflowType),
+                  eq(matchingGroupsSubquery.relatedId, workflowPhases.relatedId),
+                ),
+              ),
+          ),
+        );
       }
 
       const rows = await ctx.db
