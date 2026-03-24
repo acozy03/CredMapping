@@ -2934,6 +2934,7 @@ export default function WorkflowsClient() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
   const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -2948,7 +2949,7 @@ export default function WorkflowsClient() {
     relatedId: string;
     contextLabel: string;
   } | null>(null);
-  const backendSearch = search.trim() || undefined;
+  const backendSearch = debouncedSearch.trim() || undefined;
 
   const {
     data: workflows = [],
@@ -3110,7 +3111,14 @@ export default function WorkflowsClient() {
 
   useEffect(() => {
     setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, search, sortBy]);
+  }, [workflowType, agentFilter, debouncedSearch, sortBy]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
 
   const visibleGroups = useMemo(
     () => filteredWorkflows.slice(0, visibleCount),
@@ -3155,7 +3163,7 @@ export default function WorkflowsClient() {
             viewMode={viewMode}
             onViewModeChange={setViewMode}
           />
-          {isFetching && !isLoading && (
+          {(isFetching || (search !== debouncedSearch)) && !isLoading && (
             <Loader2 className="text-muted-foreground size-4 animate-spin" />
           )}
           <AddWorkflowDialog />
