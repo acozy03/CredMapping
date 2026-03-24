@@ -242,6 +242,7 @@ export const workflowsRouter = createTRPCRouter({
           id: workflowPhases.id,
           workflowType: workflowPhases.workflowType,
           relatedId: workflowPhases.relatedId,
+          phaseNumber: workflowPhases.phaseNumber,
           phaseName: workflowPhases.phaseName,
           status: workflowPhases.status,
           startDate: workflowPhases.startDate,
@@ -458,6 +459,7 @@ export const workflowsRouter = createTRPCRouter({
           id: workflowPhases.id,
           workflowType: workflowPhases.workflowType,
           relatedId: workflowPhases.relatedId,
+          phaseNumber: workflowPhases.phaseNumber,
           phaseName: workflowPhases.phaseName,
           status: workflowPhases.status,
           startDate: workflowPhases.startDate,
@@ -520,6 +522,7 @@ export const workflowsRouter = createTRPCRouter({
           id: workflowPhases.id,
           workflowType: workflowPhases.workflowType,
           relatedId: workflowPhases.relatedId,
+          phaseNumber: workflowPhases.phaseNumber,
           phaseName: workflowPhases.phaseName,
           status: workflowPhases.status,
           startDate: workflowPhases.startDate,
@@ -540,7 +543,12 @@ export const workflowsRouter = createTRPCRouter({
             eq(workflowPhases.relatedId, groupRelatedId),
           ),
         )
-        .orderBy(asc(workflowPhases.createdAt), asc(workflowPhases.phaseName));
+        .orderBy(
+          sql`CASE WHEN ${workflowPhases.phaseNumber} IS NULL THEN 0 ELSE 1 END`,
+          asc(workflowPhases.phaseNumber),
+          asc(workflowPhases.createdAt),
+          asc(workflowPhases.phaseName),
+        );
 
       return rows;
     }),
@@ -780,9 +788,10 @@ export const workflowsRouter = createTRPCRouter({
         newData: parentRecordData as Record<string, unknown>,
       });
       
-      const phaseRecords = input.phases.map((phase) => ({
+      const phaseRecords = input.phases.map((phase, index) => ({
         workflowType: input.workflowType,
         relatedId: relatedId,
+        phaseNumber: index + 1,
         phaseName: phase.phaseName,
         startDate: phase.startDate,
         dueDate: phase.dueDate,
@@ -913,11 +922,29 @@ export const workflowsRouter = createTRPCRouter({
 
       if (!existingGroupPhase) throw new Error("Workflow group not found.");
 
+      const [phaseNumberAggregate] = await ctx.db
+        .select({
+          maxPhaseNumber:
+            sql<number>`coalesce(max(${workflowPhases.phaseNumber}), 0)`.as(
+              "max_phase_number",
+            ),
+        })
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, input.workflowType),
+            eq(workflowPhases.relatedId, input.relatedId),
+          ),
+        );
+
+      const nextPhaseNumber = (phaseNumberAggregate?.maxPhaseNumber ?? 0) + 1;
+
       const [created] = await ctx.db
         .insert(workflowPhases)
         .values({
           workflowType: input.workflowType,
           relatedId: input.relatedId,
+          phaseNumber: nextPhaseNumber,
           phaseName: input.phaseName,
           startDate: input.startDate,
           dueDate: input.dueDate,

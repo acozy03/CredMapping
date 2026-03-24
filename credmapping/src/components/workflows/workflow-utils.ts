@@ -48,3 +48,35 @@ export function isOverdue(
 
   return due < toStartOfDay(new Date());
 }
+
+type WorkflowPhaseLike = {
+  phaseNumber?: number | null;
+  createdAt?: string | Date | null;
+  phaseName?: string | null;
+};
+
+export function compareWorkflowPhaseOrder(
+  a: WorkflowPhaseLike,
+  b: WorkflowPhaseLike,
+): number {
+  const aPhaseNumber = a.phaseNumber ?? null;
+  const bPhaseNumber = b.phaseNumber ?? null;
+
+  if (aPhaseNumber === null && bPhaseNumber !== null) return -1;
+  if (aPhaseNumber !== null && bPhaseNumber === null) return 1;
+
+  if (aPhaseNumber !== null && bPhaseNumber !== null && aPhaseNumber !== bPhaseNumber) {
+    return aPhaseNumber - bPhaseNumber;
+  }
+
+  const aCreatedAt = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const bCreatedAt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  const normalizedACreatedAt = Number.isNaN(aCreatedAt) ? 0 : aCreatedAt;
+  const normalizedBCreatedAt = Number.isNaN(bCreatedAt) ? 0 : bCreatedAt;
+
+  if (normalizedACreatedAt !== normalizedBCreatedAt) {
+    return normalizedACreatedAt - normalizedBCreatedAt;
+  }
+
+  return (a.phaseName ?? "").localeCompare(b.phaseName ?? "");
+}

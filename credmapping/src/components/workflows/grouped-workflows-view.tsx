@@ -35,6 +35,7 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import {
+  compareWorkflowPhaseOrder,
   formatDate,
   isOverdue,
   WORKFLOW_TYPE_LABELS,
@@ -316,7 +317,7 @@ function GroupedWorkflowsDetailPane({
       .map((relatedGroup) => ({
         ...relatedGroup,
         subtitle: getRelatedWorkflowSubtitle(relatedGroup),
-        rows: sortRows(relatedGroup.rows, sortBy),
+        rows: [...relatedGroup.rows].sort(compareWorkflowPhaseOrder),
       }))
       .sort((a, b) => {
         const aTimestamp = getRelatedWorkflowSortTimestamp(a, sortBy);
