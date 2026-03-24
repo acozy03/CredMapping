@@ -8,7 +8,9 @@ import {
   ArrowUpDown,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
   LayoutList,
   Loader2,
@@ -1380,6 +1382,23 @@ function ManageWorkflowPhasesSheet({
     onError: (e) => toast.error(String(e.message)),
   });
 
+  const reorderPhasesMutation = api.workflows.reorderWorkflowPhases.useMutation({
+    onSuccess: (_, variables) => {
+      toast.success("Phase order updated.");
+      void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
+      for (const phaseId of variables.orderedPhaseIds) {
+        void utils.workflows.getById.invalidate({ id: phaseId });
+      }
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId,
+        workflowType,
+        relatedId,
+      });
+    },
+    onError: (e) => toast.error(String(e.message)),
+  });
+
   function handleAddPhase() {
     addPhaseMutation.mutate({
       workflowType,
@@ -1395,6 +1414,22 @@ function ManageWorkflowPhasesSheet({
 
   function handleDeletePhase(phaseId: string) {
     deletePhaseMutation.mutate({ id: phaseId });
+  }
+
+  function handleMovePhase(index: number, direction: "up" | "down") {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= sortedGroupPhases.length) return;
+
+    const reordered = [...sortedGroupPhases];
+    const [movedPhase] = reordered.splice(index, 1);
+    if (!movedPhase) return;
+    reordered.splice(targetIndex, 0, movedPhase);
+
+    reorderPhasesMutation.mutate({
+      workflowType,
+      relatedId,
+      orderedPhaseIds: reordered.map((phase) => String(phase.id)),
+    });
   }
 
   return (
@@ -1451,8 +1486,28 @@ function ManageWorkflowPhasesSheet({
                       <Button
                         size="icon"
                         variant="ghost"
+                        disabled={reorderPhasesMutation.isPending || index === 0}
+                        onClick={() => handleMovePhase(index, "up")}
+                      >
+                        <ChevronUp className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={
+                          reorderPhasesMutation.isPending ||
+                          index === sortedGroupPhases.length - 1
+                        }
+                        onClick={() => handleMovePhase(index, "down")}
+                      >
+                        <ChevronDown className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         className="text-destructive hover:bg-destructive/10"
                         disabled={
+                          reorderPhasesMutation.isPending ||
                           deletePhaseMutation.isPending ||
                           sortedGroupPhases.length <= 1
                         }
