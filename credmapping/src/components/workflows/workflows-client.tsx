@@ -141,6 +141,8 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
 const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
 
+const EMPTY_PHASES: never[] = [];
+
 type WorkflowViewMode = "list" | "grouped";
 
 type WorkflowsFiltersSheetProps = {
@@ -1323,7 +1325,8 @@ function ManageWorkflowPhasesSheet({
   onOpenPhase,
 }: ManageWorkflowPhasesSheetProps) {
   const utils = api.useUtils();
-  const { data: groupPhases = [], isLoading } =
+
+  const { data: groupPhases = EMPTY_PHASES, isLoading } =
     api.workflows.listWorkflowGroupPhases.useQuery(
       { workflowId, workflowType, relatedId },
       { enabled: open && Boolean(workflowId) },
@@ -1357,14 +1360,20 @@ function ManageWorkflowPhasesSheet({
     );
   }, [orderedGroupPhases, serverSortedGroupPhases]);
 
+  function samePhaseOrder(a: typeof serverSortedGroupPhases, b: typeof serverSortedGroupPhases) {
+    return a.length === b.length && a.every((phase, index) => String(phase.id) === String(b[index]?.id));
+  }
+
   useEffect(() => {
     if (!open) {
-      setOrderedGroupPhases(serverSortedGroupPhases);
+      if (!samePhaseOrder(orderedGroupPhases, serverSortedGroupPhases)) {
+        setOrderedGroupPhases(serverSortedGroupPhases);
+      }
       setHasLocalReorderSession(false);
       return;
     }
 
-    if (!hasLocalReorderSession) {
+    if (!hasLocalReorderSession && !samePhaseOrder(orderedGroupPhases, serverSortedGroupPhases)) {
       setOrderedGroupPhases(serverSortedGroupPhases);
     }
   }, [open, serverSortedGroupPhases, hasLocalReorderSession]);
