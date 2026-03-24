@@ -74,8 +74,25 @@ type GroupedWorkflowsViewProps = {
   claimPending: boolean;
 };
 
+type ManagePhasesWorkflowType =
+  | "pfc"
+  | "state_licenses"
+  | "prelive_pipeline"
+  | "provider_vesta_privileges";
+
 function getWorkflowTypeLabel(workflowType: string) {
   return WORKFLOW_TYPE_LABELS[workflowType] ?? workflowType;
+}
+
+function isManagePhasesWorkflowType(
+  workflowType: string,
+): workflowType is ManagePhasesWorkflowType {
+  return [
+    "pfc",
+    "state_licenses",
+    "prelive_pipeline",
+    "provider_vesta_privileges",
+  ].includes(workflowType);
 }
 
 function sortRows(rows: WorkflowListRow[], sortBy: WorkflowSortMode) {
@@ -387,19 +404,19 @@ function GroupedWorkflowsDetailPane({
                         onClick={() => {
                           const representativeRow = relatedGroup.rows[0];
                           if (!representativeRow) return;
+                          const workflowType = String(
+                            representativeRow.workflowType,
+                          );
+                          if (!isManagePhasesWorkflowType(workflowType)) return;
+                          const contextLabel =
+                            String(representativeRow.contextLabel ?? "").trim() ||
+                            relatedGroup.label;
+
                           onManagePhases({
                             workflowId: String(representativeRow.id),
-                            workflowType: String(
-                              representativeRow.workflowType,
-                            ) as
-                              | "pfc"
-                              | "state_licenses"
-                              | "prelive_pipeline"
-                              | "provider_vesta_privileges",
-                            relatedId: String(representativeRow.relatedId),
-                            contextLabel:
-                              String(representativeRow.contextLabel ?? "") ||
-                              relatedGroup.label,
+                            workflowType,
+                            relatedId: String(relatedGroup.relatedId),
+                            contextLabel,
                           });
                         }}
                       >

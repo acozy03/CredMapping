@@ -840,11 +840,10 @@ function DeleteIncidentDialog({
   );
 }
 
-/* ─── Bulk Incident Dialog (multi-phase, independent forms) ── */
+/* ─── Bulk Incident Dialog (multi-phase, multi-incident) ── */
 
-type BulkPhaseForm = {
-  phaseId: string;
-  phaseName: string;
+type BulkIncidentEntry = {
+  clientKey: string;
   subcategory: string;
   critical: boolean;
   dateIdentified: string;
@@ -853,18 +852,11 @@ type BulkPhaseForm = {
   escalatedTo: string;
 };
 
-function emptyPhaseForm(phase: { id: string; phaseName: string }): BulkPhaseForm {
-  return {
-    phaseId: phase.id,
-    phaseName: phase.phaseName,
-    subcategory: "",
-    critical: false,
-    dateIdentified: "",
-    description: "",
-    immediateResolution: "",
-    escalatedTo: "",
-  };
-}
+type BulkPhaseIncidentGroup = {
+  phaseId: string;
+  phaseName: string;
+  incidents: BulkIncidentEntry[];
+};
 
 function BulkIncidentDialog({
   phases,
@@ -879,12 +871,19 @@ function BulkIncidentDialog({
   // Step 0 = phase selection, step 1 = per-phase forms
   const [step, setStep] = useState<0 | 1>(0);
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set());
-  const [phaseForms, setPhaseForms] = useState<BulkPhaseForm[]>([]);
-  const [activePhaseIdx, setActivePhaseIdx] = useState(0);
+  const [phaseGroups, setPhaseGroups] = useState<BulkPhaseIncidentGroup[]>([]);
+  const [openPhaseIds, setOpenPhaseIds] = useState<string[]>([]);
+  const incidentIdRef = useRef(0);
 
   const createBulkMutation = api.workflows.createBulkIncidents.useMutation({
     onSuccess: () => {
-      toast.success(`Incident logged for ${phaseForms.length} phase${phaseForms.length !== 1 ? "s" : ""}.`);
+      const totalIncidents = phaseGroups.reduce(
+        (count, group) => count + group.incidents.length,
+        0,
+      );
+      toast.success(
+        `${totalIncidents} incident${totalIncidents !== 1 ? "s" : ""} logged across ${phaseGroups.length} phase${phaseGroups.length !== 1 ? "s" : ""}.`,
+      );
       setOpen(false);
       onSuccess();
     },
@@ -894,8 +893,22 @@ function BulkIncidentDialog({
   function reset() {
     setStep(0);
     setSelectedPhaseIds(new Set());
-    setPhaseForms([]);
-    setActivePhaseIdx(0);
+    setPhaseGroups([]);
+    setOpenPhaseIds([]);
+    incidentIdRef.current = 0;
+  }
+
+  function makeEmptyIncident(): BulkIncidentEntry {
+    const nextId = incidentIdRef.current++;
+    return {
+      clientKey: `bulk-incident-${nextId}`,
+      subcategory: "",
+      critical: false,
+      dateIdentified: "",
+      description: "",
+      immediateResolution: "",
+      escalatedTo: "",
+    };
   }
 
   function togglePhase(id: string) {
@@ -921,49 +934,105 @@ function BulkIncidentDialog({
       return;
     }
     const selected = phases.filter((p) => selectedPhaseIds.has(p.id));
-    setPhaseForms(selected.map(emptyPhaseForm));
-    setActivePhaseIdx(0);
+    setPhaseGroups(
+      selected.map((phase) => ({
+        phaseId: phase.id,
+        phaseName: phase.phaseName,
+        incidents: [makeEmptyIncident()],
+      })),
+    );
+    setOpenPhaseIds(selected[0] ? [selected[0].id] : []);
     setStep(1);
   }
 
-  function updateForm(idx: number, patch: Partial<BulkPhaseForm>) {
-    setPhaseForms((prev) =>
-      prev.map((f, i) => (i === idx ? { ...f, ...patch } : f)),
+  function updateIncident(
+    phaseId: string,
+    incidentKey: string,
+    patch: Partial<BulkIncidentEntry>,
+  ) {
+    setPhaseGroups((prev) =>
+      prev.map((group) =>
+        group.phaseId !== phaseId
+          ? group
+          : {
+              ...group,
+              incidents: group.incidents.map((incident) =>
+                incident.clientKey === incidentKey
+                  ? { ...incident, ...patch }
+                  : incident,
+              ),
+            },
+      ),
     );
   }
 
-  function validateForm(form: BulkPhaseForm): string | null {
-    if (!form.subcategory.trim()) return `"${form.phaseName}" – Subcategory is required.`;
-    if (!form.dateIdentified) return `"${form.phaseName}" – Date identified is required.`;
-    if (!form.escalatedTo) return `"${form.phaseName}" – Escalated To is required.`;
+  function addIncident(phaseId: string) {
+    setPhaseGroups((prev) =>
+      prev.map((group) =>
+        group.phaseId !== phaseId
+          ? group
+          : { ...group, incidents: [...group.incidents, makeEmptyIncident()] },
+      ),
+    );
+  }
+
+  function removeIncident(phaseId: string, incidentKey: string) {
+    setPhaseGroups((prev) =>
+      prev.map((group) => {
+        if (group.phaseId !== phaseId) return group;
+        return {
+          ...group,
+          incidents: group.incidents.filter(
+            (incident) => incident.clientKey !== incidentKey,
+          ),
+        };
+      }),
+    );
+  }
+
+  function validateIncident(incident: BulkIncidentEntry): string | null {
+    if (!incident.subcategory.trim()) return "Subcategory is required.";
+    if (!incident.dateIdentified) return "Date identified is required.";
+    if (!incident.escalatedTo) return "Escalated To is required.";
     return null;
   }
 
   function handleSubmit() {
-    for (const form of phaseForms) {
-      const err = validateForm(form);
-      if (err) {
-        toast.error(err);
-        const errIdx = phaseForms.indexOf(form);
-        if (errIdx !== -1) setActivePhaseIdx(errIdx);
-        return;
+    const totalIncidents = phaseGroups.reduce(
+      (count, group) => count + group.incidents.length,
+      0,
+    );
+    if (totalIncidents === 0) {
+      toast.error("Add at least one incident before submitting.");
+      return;
+    }
+
+    for (const group of phaseGroups) {
+      for (let idx = 0; idx < group.incidents.length; idx += 1) {
+        const incident = group.incidents[idx];
+        if (!incident) continue;
+        const err = validateIncident(incident);
+        if (err) {
+          toast.error(`${group.phaseName} – Incident ${idx + 1}: ${err}`);
+          return;
+        }
       }
     }
 
     createBulkMutation.mutate({
-      incidents: phaseForms.map((f) => ({
-        workflowId: f.phaseId,
-        subcategory: f.subcategory.trim(),
-        critical: f.critical,
-        dateIdentified: f.dateIdentified,
-        incidentDescription: f.description || undefined,
-        immediateResolutionAttempt: f.immediateResolution || undefined,
-        escalatedTo: f.escalatedTo,
-      })),
+      incidents: phaseGroups.flatMap((group) =>
+        group.incidents.map((incident) => ({
+          workflowId: group.phaseId,
+          subcategory: incident.subcategory.trim(),
+          critical: incident.critical,
+          dateIdentified: incident.dateIdentified,
+          incidentDescription: incident.description || undefined,
+          immediateResolutionAttempt: incident.immediateResolution || undefined,
+          escalatedTo: incident.escalatedTo,
+        })),
+      ),
     });
   }
-
-  const activeForm = phaseForms[activePhaseIdx];
 
   return (
     <Dialog
@@ -1036,130 +1105,172 @@ function BulkIncidentDialog({
             </ModalFooter>
           </div>
         ) : (
-          /* ── Step 1: Per-phase independent forms ── */
+          /* ── Step 1: Per-phase groups with multiple incidents ── */
           <div className="space-y-4 py-2">
-            {/* Phase tabs */}
-            <div className="flex gap-1 overflow-x-auto rounded-md border p-1">
-              {phaseForms.map((f, idx) => {
-                const hasError = !!validateForm(f);
-                const isFilled = !hasError;
-                return (
-                  <button
-                    key={f.phaseId}
-                    type="button"
-                    onClick={() => setActivePhaseIdx(idx)}
-                    className={cn(
-                      "relative shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                      idx === activePhaseIdx
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {f.phaseName}
-                    {isFilled && idx !== activePhaseIdx && (
-                      <CheckCircle2 className="ml-1 inline size-3 text-emerald-500" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <Accordion
+              type="multiple"
+              value={openPhaseIds}
+              onValueChange={setOpenPhaseIds}
+              className="space-y-2"
+            >
+              {phaseGroups.map((group) => (
+                <AccordionItem
+                  key={group.phaseId}
+                  value={group.phaseId}
+                  className="overflow-hidden rounded-md border last:border-b"
+                >
+                  <AccordionTrigger className="hover:bg-muted/40 px-3 py-2 text-left hover:no-underline">
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+                      <p className="truncate text-sm font-semibold">
+                        {group.phaseName}
+                      </p>
+                      <p className="text-muted-foreground shrink-0 text-xs">
+                        {group.incidents.length} incident
+                        {group.incidents.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 border-t px-3 pt-3 pb-3">
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addIncident(group.phaseId)}
+                      >
+                        <Plus className="mr-1 size-3.5" />
+                        Add another incident
+                      </Button>
+                    </div>
 
-            {/* Active phase form */}
-            {activeForm && (
-              <div className="space-y-3 rounded-md border p-3">
-                <p className="text-sm font-semibold">{activeForm.phaseName}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Subcategory *</Label>
-                    <Input
-                      value={activeForm.subcategory}
-                      onChange={(e) => updateForm(activePhaseIdx, { subcategory: e.target.value })}
-                      placeholder="e.g. Missing Documentation"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Date Identified *</Label>
-                    <Input
-                      type="date"
-                      value={activeForm.dateIdentified}
-                      onChange={(e) => updateForm(activePhaseIdx, { dateIdentified: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Escalated To *</Label>
-                    <Select
-                      value={activeForm.escalatedTo}
-                      onValueChange={(v) => updateForm(activePhaseIdx, { escalatedTo: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select agent…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {agents.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name}
-                          </SelectItem>
+                    {group.incidents.length === 0 ? (
+                      <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
+                        No incidents added yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {group.incidents.map((incident, incidentIdx) => (
+                          <div
+                            key={incident.clientKey}
+                            className="space-y-3 rounded-md border bg-muted/20 p-3"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium">
+                                Incident {incidentIdx + 1}
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  removeIncident(group.phaseId, incident.clientKey)
+                                }
+                              >
+                                <Trash2 className="mr-1 size-3.5" />
+                                Remove
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="col-span-2 space-y-1.5">
+                                <Label>Subcategory *</Label>
+                                <Input
+                                  value={incident.subcategory}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      subcategory: e.target.value,
+                                    })
+                                  }
+                                  placeholder="e.g. Missing Documentation"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Date Identified *</Label>
+                                <Input
+                                  type="date"
+                                  value={incident.dateIdentified}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      dateIdentified: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Escalated To *</Label>
+                                <Select
+                                  value={incident.escalatedTo}
+                                  onValueChange={(value) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      escalatedTo: value,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select agent…" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {agents.map((a) => (
+                                      <SelectItem key={a.id} value={a.id}>
+                                        {a.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="col-span-2 flex items-center gap-2 pt-1">
+                                <Checkbox
+                                  id={`bulk-critical-${group.phaseId}-${incident.clientKey}`}
+                                  checked={incident.critical}
+                                  onCheckedChange={(checked) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      critical: checked === true,
+                                    })
+                                  }
+                                />
+                                <Label
+                                  htmlFor={`bulk-critical-${group.phaseId}-${incident.clientKey}`}
+                                  className="font-normal"
+                                >
+                                  Critical Incident
+                                </Label>
+                              </div>
+
+                              <div className="col-span-2 space-y-1.5">
+                                <Label>Description</Label>
+                                <Textarea
+                                  rows={2}
+                                  value={incident.description}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      description: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+
+                              <div className="col-span-2 space-y-1.5">
+                                <Label>Immediate Resolution Attempt</Label>
+                                <Textarea
+                                  rows={2}
+                                  value={incident.immediateResolution}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      immediateResolution: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="col-span-2 flex items-center gap-2 pt-1">
-                    <Checkbox
-                      id={`bulk-critical-${activeForm.phaseId}`}
-                      checked={activeForm.critical}
-                      onCheckedChange={(v) => updateForm(activePhaseIdx, { critical: v === true })}
-                    />
-                    <Label htmlFor={`bulk-critical-${activeForm.phaseId}`} className="font-normal">
-                      Critical Incident
-                    </Label>
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Description</Label>
-                    <Textarea
-                      rows={2}
-                      value={activeForm.description}
-                      onChange={(e) => updateForm(activePhaseIdx, { description: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Immediate Resolution Attempt</Label>
-                    <Textarea
-                      rows={2}
-                      value={activeForm.immediateResolution}
-                      onChange={(e) => updateForm(activePhaseIdx, { immediateResolution: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                {/* Prev / Next within phases */}
-                <div className="flex items-center justify-between pt-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={activePhaseIdx === 0}
-                    onClick={() => setActivePhaseIdx((i) => i - 1)}
-                  >
-                    ← Prev Phase
-                  </Button>
-                  <span className="text-muted-foreground text-xs">
-                    {activePhaseIdx + 1} / {phaseForms.length}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={activePhaseIdx === phaseForms.length - 1}
-                    onClick={() => setActivePhaseIdx((i) => i + 1)}
-                  >
-                    Next Phase →
-                  </Button>
-                </div>
-              </div>
-            )}
+                      </div>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
 
             <ModalFooter>
               <Button variant="outline" onClick={() => setStep(0)}>
@@ -1167,7 +1278,18 @@ function BulkIncidentDialog({
               </Button>
               <Button onClick={handleSubmit} disabled={createBulkMutation.isPending}>
                 {createBulkMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                Log {phaseForms.length} Incident{phaseForms.length !== 1 ? "s" : ""}
+                Log{" "}
+                {phaseGroups.reduce(
+                  (count, group) => count + group.incidents.length,
+                  0,
+                )}{" "}
+                Incident
+                {phaseGroups.reduce(
+                  (count, group) => count + group.incidents.length,
+                  0,
+                ) !== 1
+                  ? "s"
+                  : ""}
               </Button>
             </ModalFooter>
           </div>
