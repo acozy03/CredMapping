@@ -140,16 +140,7 @@ export const workflowsRouter = createTRPCRouter({
                 sql`coalesce(${agents.firstName}, '') || ' ' || coalesce(${agents.lastName}, '')`,
                 searchTerm,
               ),
-              ilike(
-                sql`case
-                  when ${workflowPhases.workflowType} = 'pfc' then 'PFC'
-                  when ${workflowPhases.workflowType} = 'state_licenses' then 'State Licenses'
-                  when ${workflowPhases.workflowType} = 'prelive_pipeline' then 'Pre-Live Pipeline'
-                  when ${workflowPhases.workflowType} = 'provider_vesta_privileges' then 'Vesta Privileges'
-                  else ${workflowPhases.workflowType}
-                end`,
-                searchTerm,
-              ),
+              ilike(sql`${workflowPhases.workflowType}::text`, searchTerm),
               and(
                 eq(workflowPhases.workflowType, "pfc"),
                 exists(
