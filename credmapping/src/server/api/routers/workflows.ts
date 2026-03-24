@@ -126,8 +126,11 @@ export const workflowsRouter = createTRPCRouter({
       const trimmedSearch = input.search?.trim();
       if (trimmedSearch) {
         const searchTerm = `%${trimmedSearch}%`;
-        const matchingRelatedIds = ctx.db
-          .selectDistinct({ relatedId: workflowPhases.relatedId })
+        const matchingGroups = ctx.db
+          .selectDistinct({
+            workflowType: workflowPhases.workflowType,
+            relatedId: workflowPhases.relatedId,
+          })
           .from(workflowPhases)
           .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
           .where(
@@ -226,7 +229,21 @@ export const workflowsRouter = createTRPCRouter({
             ),
           );
 
-        conditions.push(inArray(workflowPhases.relatedId, matchingRelatedIds));
+        const matchingGroupsSubquery = matchingGroups.as("matching_groups");
+
+        conditions.push(
+          exists(
+            ctx.db
+              .select({ one: sql`1` })
+              .from(matchingGroupsSubquery)
+              .where(
+                and(
+                  eq(matchingGroupsSubquery.workflowType, workflowPhases.workflowType),
+                  eq(matchingGroupsSubquery.relatedId, workflowPhases.relatedId),
+                ),
+              ),
+          ),
+        );
       }
 
       const rows = await ctx.db
