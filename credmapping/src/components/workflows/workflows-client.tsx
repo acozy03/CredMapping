@@ -1179,16 +1179,280 @@ function BulkIncidentDialog({
 
 /* ─── Workflow Detail Sheet ──────────────────────────────── */
 
+type ManageWorkflowPhasesSheetProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workflowId: string;
+  workflowType: "pfc" | "state_licenses" | "prelive_pipeline" | "provider_vesta_privileges";
+  relatedId: string;
+  contextLabel: string;
+  agentList: { id: string; name: string; email: string }[];
+  statusSuggestions: string[];
+  onOpenPhase: (workflowId: string) => void;
+};
+
+function ManageWorkflowPhasesSheet({
+  open,
+  onOpenChange,
+  workflowId,
+  workflowType,
+  relatedId,
+  contextLabel,
+  agentList,
+  statusSuggestions,
+  onOpenPhase,
+}: ManageWorkflowPhasesSheetProps) {
+  const utils = api.useUtils();
+  const { data: groupPhases = [], isLoading } =
+    api.workflows.listWorkflowGroupPhases.useQuery(
+      { workflowId },
+      { enabled: open && Boolean(workflowId) },
+    );
+
+  const [newPhaseName, setNewPhaseName] = useState("");
+  const [newPhaseStatus, setNewPhaseStatus] = useState("Pending");
+  const [newPhaseAgentAssigned, setNewPhaseAgentAssigned] = useState<
+    string | null
+  >(null);
+  const [newPhaseStartDate, setNewPhaseStartDate] = useState("");
+  const [newPhaseDueDate, setNewPhaseDueDate] = useState("");
+  const [newPhaseNotes, setNewPhaseNotes] = useState("");
+
+  const addPhaseMutation = api.workflows.addPhaseToWorkflowGroup.useMutation({
+    onSuccess: (created) => {
+      toast.success("Phase added.");
+      setNewPhaseName("");
+      setNewPhaseStatus("Pending");
+      setNewPhaseAgentAssigned(null);
+      setNewPhaseStartDate("");
+      setNewPhaseDueDate("");
+      setNewPhaseNotes("");
+      void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
+      void utils.workflows.getById.invalidate({ id: String(created.id) });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId: String(created.id),
+      });
+    },
+    onError: (e) => toast.error(String(e.message)),
+  });
+
+  const deletePhaseMutation = api.workflows.deleteWorkflowPhase.useMutation({
+    onSuccess: () => {
+      toast.success("Phase deleted.");
+      void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
+    },
+    onError: (e) => toast.error(String(e.message)),
+  });
+
+  function handleAddPhase() {
+    addPhaseMutation.mutate({
+      workflowType,
+      relatedId,
+      phaseName: newPhaseName.trim(),
+      status: newPhaseStatus.trim() || "Pending",
+      startDate: newPhaseStartDate || undefined,
+      dueDate: newPhaseDueDate || undefined,
+      agentAssigned: newPhaseAgentAssigned,
+      workflowNotes: newPhaseNotes || undefined,
+    });
+  }
+
+  function handleDeletePhase(phaseId: string, phaseNameToDelete: string) {
+    const confirmed = window.confirm(
+      `Delete phase "${phaseNameToDelete}"? This action cannot be undone.`,
+    );
+    if (!confirmed) return;
+    deletePhaseMutation.mutate({ id: phaseId });
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
+        <SheetHeader className="border-b px-6 pt-6 pr-14 pb-4">
+          <SheetTitle>Manage Phases</SheetTitle>
+          <p className="text-muted-foreground text-sm">
+            {WORKFLOW_TYPE_LABELS[workflowType] ?? workflowType} ·{" "}
+            {contextLabel || "Workflow group"}
+          </p>
+        </SheetHeader>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="space-y-3 rounded-md border p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Workflow Group Phase List</p>
+              <Badge variant="secondary">{groupPhases.length} phases</Badge>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="text-muted-foreground size-5 animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {groupPhases.map((phase, index) => {
+                  const assigned = phase.assignedFirstName
+                    ? `${phase.assignedFirstName} ${phase.assignedLastName ?? ""}`.trim()
+                    : "Unassigned";
+
+                  return (
+                    <div
+                      key={String(phase.id)}
+                      className="flex items-center gap-3 rounded-md border p-2.5"
+                    >
+                      <span className="text-muted-foreground w-8 shrink-0 text-xs font-medium">
+                        {index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          onOpenPhase(String(phase.id));
+                          onOpenChange(false);
+                        }}
+                      >
+                        <p className="truncate text-sm font-medium">
+                          {phase.phaseName}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {phase.status ?? "Pending"} · {assigned}
+                        </p>
+                      </button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive hover:bg-destructive/10"
+                        disabled={
+                          deletePhaseMutation.isPending ||
+                          groupPhases.length <= 1
+                        }
+                        onClick={() =>
+                          handleDeletePhase(
+                            String(phase.id),
+                            String(phase.phaseName),
+                          )
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 rounded-md border p-4">
+            <p className="text-sm font-medium">Add Phase</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Phase Name
+                </Label>
+                <Input
+                  value={newPhaseName}
+                  onChange={(e) => setNewPhaseName(e.target.value)}
+                  placeholder="Enter phase name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">Status</Label>
+                <Input
+                  list="manage-group-phase-status-suggestions"
+                  value={newPhaseStatus}
+                  onChange={(e) => setNewPhaseStatus(e.target.value)}
+                  placeholder="Pending"
+                />
+                <datalist id="manage-group-phase-status-suggestions">
+                  {statusSuggestions.map((suggestion) => (
+                    <option key={suggestion} value={suggestion} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Assigned Agent
+                </Label>
+                <Select
+                  value={newPhaseAgentAssigned ?? "__none"}
+                  onValueChange={(value) =>
+                    setNewPhaseAgentAssigned(value === "__none" ? null : value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Unassigned</SelectItem>
+                    {agentList.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Start Date
+                </Label>
+                <Input
+                  type="date"
+                  value={newPhaseStartDate}
+                  onChange={(e) => setNewPhaseStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Due Date
+                </Label>
+                <Input
+                  type="date"
+                  value={newPhaseDueDate}
+                  onChange={(e) => setNewPhaseDueDate(e.target.value)}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-muted-foreground text-xs">Notes</Label>
+                <Textarea
+                  rows={2}
+                  value={newPhaseNotes}
+                  onChange={(e) => setNewPhaseNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                disabled={
+                  addPhaseMutation.isPending || newPhaseName.trim().length === 0
+                }
+                onClick={handleAddPhase}
+              >
+                {addPhaseMutation.isPending && (
+                  <Loader2 className="mr-2 size-3.5 animate-spin" />
+                )}
+                <Plus className="mr-1 size-3.5" />
+                Add Phase
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function WorkflowDetailSheet({
   workflowId,
   onClose,
-  onSelectWorkflow,
   agentList,
   statusSuggestions,
 }: {
   workflowId: string;
   onClose: () => void;
-  onSelectWorkflow: (workflowId: string) => void;
   agentList: { id: string; name: string; email: string }[];
   statusSuggestions: string[];
 }) {
@@ -1199,10 +1463,6 @@ function WorkflowDetailSheet({
   const { data: incidents = [] } = api.workflows.listIncidents.useQuery({
     workflowId,
   });
-  const { data: groupPhases = [] } = api.workflows.listWorkflowGroupPhases.useQuery(
-    { workflowId },
-    { enabled: Boolean(workflowId) },
-  );
 
   // Supporting agents
   const supportingIds = useMemo(
@@ -1223,12 +1483,6 @@ function WorkflowDetailSheet({
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [completedAt, setCompletedAt] = useState("");
-  const [newPhaseName, setNewPhaseName] = useState("");
-  const [newPhaseStatus, setNewPhaseStatus] = useState("Pending");
-  const [newPhaseAgentAssigned, setNewPhaseAgentAssigned] = useState<string | null>(null);
-  const [newPhaseStartDate, setNewPhaseStartDate] = useState("");
-  const [newPhaseDueDate, setNewPhaseDueDate] = useState("");
-  const [newPhaseNotes, setNewPhaseNotes] = useState("");
 
   // Sync form when data loads
   useEffect(() => {
@@ -1261,49 +1515,6 @@ function WorkflowDetailSheet({
     onError: (e) => toast.error(String(e.message)),
   });
 
-  const addPhaseMutation = api.workflows.addPhaseToWorkflowGroup.useMutation({
-    onSuccess: (created) => {
-      toast.success("Phase added.");
-      setNewPhaseName("");
-      setNewPhaseStatus("Pending");
-      setNewPhaseAgentAssigned(null);
-      setNewPhaseStartDate("");
-      setNewPhaseDueDate("");
-      setNewPhaseNotes("");
-      onSelectWorkflow(String(created.id));
-      void utils.workflows.list.invalidate();
-      void utils.workflows.getById.invalidate({ id: workflowId });
-      void utils.workflows.getById.invalidate({ id: String(created.id) });
-      void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
-      void utils.workflows.listWorkflowGroupPhases.invalidate({
-        workflowId: String(created.id),
-      });
-    },
-    onError: (e) => toast.error(String(e.message)),
-  });
-
-  const deletePhaseMutation = api.workflows.deleteWorkflowPhase.useMutation({
-    onSuccess: (result) => {
-      toast.success("Phase deleted.");
-      void utils.workflows.list.invalidate();
-      void utils.workflows.getById.invalidate({ id: workflowId });
-      void utils.workflows.listWorkflowGroupPhases.invalidate({ workflowId });
-      if (result.deletedId === workflowId) {
-        const nextPhase = groupPhases.find((phase) => String(phase.id) !== workflowId);
-        if (nextPhase) {
-          void utils.workflows.getById.invalidate({ id: String(nextPhase.id) });
-          void utils.workflows.listWorkflowGroupPhases.invalidate({
-            workflowId: String(nextPhase.id),
-          });
-          onSelectWorkflow(String(nextPhase.id));
-          return;
-        }
-        onClose();
-      }
-    },
-    onError: (e) => toast.error(String(e.message)),
-  });
-
   function handleSave() {
     updateMutation.mutate({
       id: workflowId,
@@ -1319,28 +1530,6 @@ function WorkflowDetailSheet({
 
   function refreshIncidents() {
     void utils.workflows.listIncidents.invalidate({ workflowId });
-  }
-
-  function handleAddPhase() {
-    if (!wf) return;
-    addPhaseMutation.mutate({
-      workflowType: wf.workflowType,
-      relatedId: wf.relatedId,
-      phaseName: newPhaseName.trim(),
-      status: newPhaseStatus.trim() || "Pending",
-      startDate: newPhaseStartDate || undefined,
-      dueDate: newPhaseDueDate || undefined,
-      agentAssigned: newPhaseAgentAssigned,
-      workflowNotes: newPhaseNotes || undefined,
-    });
-  }
-
-  function handleDeletePhase(id: string, phaseNameToDelete: string) {
-    const confirmed = window.confirm(
-      `Delete phase "${phaseNameToDelete}"? This action cannot be undone.`,
-    );
-    if (!confirmed) return;
-    deletePhaseMutation.mutate({ id });
   }
 
   const assignedName = wf?.assignedFirstName
@@ -1541,157 +1730,6 @@ function WorkflowDetailSheet({
                     <CalendarDays className="text-muted-foreground size-3.5" />
                     {formatDate(String(wf.createdAt))}
                   </p>
-                </div>
-              </div>
-
-              <div className="space-y-3 rounded-md border p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Workflow Group Phases</p>
-                  <Badge variant="secondary">{groupPhases.length} phases</Badge>
-                </div>
-
-                <div className="space-y-2">
-                  {groupPhases.map((phase) => {
-                    const assigned = phase.assignedFirstName
-                      ? `${phase.assignedFirstName} ${phase.assignedLastName ?? ""}`.trim()
-                      : "Unassigned";
-                    const isCurrent = String(phase.id) === workflowId;
-                    return (
-                      <div
-                        key={String(phase.id)}
-                        className={cn(
-                          "flex items-center justify-between gap-3 rounded-md border p-2",
-                          isCurrent && "border-primary/40 bg-primary/5",
-                        )}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => onSelectWorkflow(String(phase.id))}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <p className="truncate text-sm font-medium">
-                            {phase.phaseName}
-                          </p>
-                          <p className="text-muted-foreground text-xs">
-                            {phase.status ?? "Pending"} · {assigned}
-                          </p>
-                        </button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-destructive hover:bg-destructive/10"
-                          disabled={deletePhaseMutation.isPending || groupPhases.length <= 1}
-                          onClick={() =>
-                            handleDeletePhase(String(phase.id), String(phase.phaseName))
-                          }
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <p className="text-muted-foreground text-xs font-medium uppercase">
-                    Add Phase
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className="text-muted-foreground text-xs">
-                        Phase Name
-                      </Label>
-                      <Input
-                        value={newPhaseName}
-                        onChange={(e) => setNewPhaseName(e.target.value)}
-                        placeholder="Enter phase name"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-xs">
-                        Status
-                      </Label>
-                      <Input
-                        list="group-phase-status-suggestions"
-                        value={newPhaseStatus}
-                        onChange={(e) => setNewPhaseStatus(e.target.value)}
-                        placeholder="Pending"
-                      />
-                      <datalist id="group-phase-status-suggestions">
-                        {statusSuggestions.map((s) => (
-                          <option key={s} value={s} />
-                        ))}
-                      </datalist>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-xs">
-                        Assigned Agent
-                      </Label>
-                      <Select
-                        value={newPhaseAgentAssigned ?? "__none"}
-                        onValueChange={(v) =>
-                          setNewPhaseAgentAssigned(v === "__none" ? null : v)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">Unassigned</SelectItem>
-                          {agentList.map((a) => (
-                            <SelectItem key={a.id} value={a.id}>
-                              {a.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-xs">
-                        Start Date
-                      </Label>
-                      <Input
-                        type="date"
-                        value={newPhaseStartDate}
-                        onChange={(e) => setNewPhaseStartDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-xs">
-                        Due Date
-                      </Label>
-                      <Input
-                        type="date"
-                        value={newPhaseDueDate}
-                        onChange={(e) => setNewPhaseDueDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className="text-muted-foreground text-xs">
-                        Notes
-                      </Label>
-                      <Textarea
-                        rows={2}
-                        value={newPhaseNotes}
-                        onChange={(e) => setNewPhaseNotes(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button
-                      size="sm"
-                      disabled={addPhaseMutation.isPending || newPhaseName.trim().length === 0}
-                      onClick={handleAddPhase}
-                    >
-                      {addPhaseMutation.isPending && (
-                        <Loader2 className="mr-2 size-3.5 animate-spin" />
-                      )}
-                      <Plus className="mr-1 size-3.5" />
-                      Add Phase
-                    </Button>
-                  </div>
                 </div>
               </div>
             </TabsContent>
@@ -2773,6 +2811,16 @@ export default function WorkflowsClient() {
   const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [phaseManagerGroup, setPhaseManagerGroup] = useState<{
+    workflowId: string;
+    workflowType:
+      | "pfc"
+      | "state_licenses"
+      | "prelive_pipeline"
+      | "provider_vesta_privileges";
+    relatedId: string;
+    contextLabel: string;
+  } | null>(null);
 
   const {
     data: workflows = [],
@@ -3031,6 +3079,7 @@ export default function WorkflowsClient() {
           claimPending={selfAssignMutation.isPending}
           onOpenWorkflow={setSelectedId}
           onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+          onManagePhases={setPhaseManagerGroup}
         />
       ) : (
         <VirtualScrollContainer
@@ -3132,7 +3181,28 @@ export default function WorkflowsClient() {
 
                   {isExpanded && (
                     <div className="border-t px-4 py-3">
-                      <div className="mb-2 flex items-center justify-end">
+                      <div className="mb-2 flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={group.phases.length === 0}
+                          onClick={() => {
+                            const representativePhase = group.phases[0];
+                            if (!representativePhase) return;
+                            setPhaseManagerGroup({
+                              workflowId: String(representativePhase.id),
+                              workflowType: group.workflowType as
+                                | "pfc"
+                                | "state_licenses"
+                                | "prelive_pipeline"
+                                | "provider_vesta_privileges",
+                              relatedId: String(group.relatedId),
+                              contextLabel: String(group.contextLabel),
+                            });
+                          }}
+                        >
+                          Manage Phases
+                        </Button>
                         <BulkIncidentDialog
                           phases={group.phases.map((p) => ({
                             id: String(p.id),
@@ -3285,9 +3355,24 @@ export default function WorkflowsClient() {
         <WorkflowDetailSheet
           workflowId={selectedId}
           onClose={() => setSelectedId(null)}
-          onSelectWorkflow={setSelectedId}
           agentList={agentList}
           statusSuggestions={statusSuggestions}
+        />
+      )}
+
+      {phaseManagerGroup && (
+        <ManageWorkflowPhasesSheet
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setPhaseManagerGroup(null);
+          }}
+          workflowId={phaseManagerGroup.workflowId}
+          workflowType={phaseManagerGroup.workflowType}
+          relatedId={phaseManagerGroup.relatedId}
+          contextLabel={phaseManagerGroup.contextLabel}
+          agentList={agentList}
+          statusSuggestions={statusSuggestions}
+          onOpenPhase={setSelectedId}
         />
       )}
     </div>

@@ -29,7 +29,6 @@ import {
 } from "~/components/ui/table";
 import {
   formatDate,
-  isCompletedStatus,
   isOverdue,
   WORKFLOW_TYPE_LABELS,
   type WorkflowSortMode,
@@ -62,6 +61,16 @@ type GroupedWorkflowsViewProps = {
   sortBy: WorkflowSortMode;
   onOpenWorkflow: (id: string) => void;
   onClaimWorkflow: (id: string) => void;
+  onManagePhases: (input: {
+    workflowId: string;
+    workflowType:
+      | "pfc"
+      | "state_licenses"
+      | "prelive_pipeline"
+      | "provider_vesta_privileges";
+    relatedId: string;
+    contextLabel: string;
+  }) => void;
   claimPending: boolean;
 };
 
@@ -234,6 +243,7 @@ function GroupedWorkflowsDetailPane({
   rows,
   onOpenWorkflow,
   onClaimWorkflow,
+  onManagePhases,
   claimPending,
   detailSearch,
   onDetailSearchChange,
@@ -244,6 +254,7 @@ function GroupedWorkflowsDetailPane({
   rows: WorkflowListRow[];
   onOpenWorkflow: (id: string) => void;
   onClaimWorkflow: (id: string) => void;
+  onManagePhases: GroupedWorkflowsViewProps["onManagePhases"];
   claimPending: boolean;
   detailSearch: string;
   onDetailSearchChange: (value: string) => void;
@@ -369,6 +380,32 @@ function GroupedWorkflowsDetailPane({
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-3">
+                    <div className="mb-2 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const representativeRow = relatedGroup.rows[0];
+                          if (!representativeRow) return;
+                          onManagePhases({
+                            workflowId: String(representativeRow.id),
+                            workflowType: String(
+                              representativeRow.workflowType,
+                            ) as
+                              | "pfc"
+                              | "state_licenses"
+                              | "prelive_pipeline"
+                              | "provider_vesta_privileges",
+                            relatedId: String(representativeRow.relatedId),
+                            contextLabel:
+                              String(representativeRow.contextLabel ?? "") ||
+                              relatedGroup.label,
+                          });
+                        }}
+                      >
+                        Manage Phases
+                      </Button>
+                    </div>
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -479,6 +516,7 @@ export function GroupedWorkflowsView({
   sortBy,
   onOpenWorkflow,
   onClaimWorkflow,
+  onManagePhases,
   claimPending,
 }: GroupedWorkflowsViewProps) {
   const [groupBy, setGroupBy] = useState<GroupByMode>("provider");
@@ -644,6 +682,7 @@ export function GroupedWorkflowsView({
             rows={selectedRows}
             onOpenWorkflow={onOpenWorkflow}
             onClaimWorkflow={onClaimWorkflow}
+            onManagePhases={onManagePhases}
             claimPending={claimPending}
             detailSearch={detailSearch}
             onDetailSearchChange={setDetailSearch}
