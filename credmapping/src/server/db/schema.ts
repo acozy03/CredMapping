@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   uuid,
+  integer,
 } from "drizzle-orm/pg-core";
 import { authenticatedRole } from "drizzle-orm/supabase";
 
@@ -118,7 +119,8 @@ export const workflowPhases = pgTable("workflow_phases", {
   agentAssigned: uuid("agent_assigned").references(() => agents.id),
   supportingAgents: jsonb("supporting_agents"), 
   workflowType: workflowType("workflow_type").notNull(), 
-  relatedId: uuid("related_id").notNull(),  
+  relatedId: uuid("related_id").notNull(),
+  phaseNumber: integer("phase_number"),  
   status: text("status").default("Pending"),
   phaseName: text("phase_name").notNull(), 
   startDate: date("start_date"),
