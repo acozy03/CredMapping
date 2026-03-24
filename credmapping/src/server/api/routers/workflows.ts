@@ -370,6 +370,51 @@ export const workflowsRouter = createTRPCRouter({
       return row;
     }),
 
+  /** List all phases in the same workflow group as a given phase id */
+  listWorkflowGroupPhases: protectedProcedure
+    .input(z.object({ workflowId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const [basePhase] = await ctx.db
+        .select({
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+        })
+        .from(workflowPhases)
+        .where(eq(workflowPhases.id, input.workflowId))
+        .limit(1);
+
+      if (!basePhase) throw new Error("Workflow phase not found.");
+
+      const rows = await ctx.db
+        .select({
+          id: workflowPhases.id,
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          phaseName: workflowPhases.phaseName,
+          status: workflowPhases.status,
+          startDate: workflowPhases.startDate,
+          dueDate: workflowPhases.dueDate,
+          completedAt: workflowPhases.completedAt,
+          notes: workflowPhases.notes,
+          createdAt: workflowPhases.createdAt,
+          updatedAt: workflowPhases.updatedAt,
+          agentAssigned: workflowPhases.agentAssigned,
+          assignedFirstName: agents.firstName,
+          assignedLastName: agents.lastName,
+        })
+        .from(workflowPhases)
+        .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+        .where(
+          and(
+            eq(workflowPhases.workflowType, basePhase.workflowType),
+            eq(workflowPhases.relatedId, basePhase.relatedId),
+          ),
+        )
+        .orderBy(asc(workflowPhases.createdAt), asc(workflowPhases.phaseName));
+
+      return rows;
+    }),
+
   // Fetch providers for create workflow dropdown
   listProvidersForDropdown: protectedProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
@@ -706,6 +751,116 @@ export const workflowsRouter = createTRPCRouter({
       });
 
       return updated;
+    }),
+
+  addPhaseToWorkflowGroup: protectedProcedure
+    .input(
+      z.object({
+        workflowType: z.enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges"]),
+        relatedId: z.string().uuid(),
+        phaseName: z.string().trim().min(1),
+        startDate: z.string().date().optional(),
+        dueDate: z.string().date().optional(),
+        status: z.string().trim().optional().default("Pending"),
+        agentAssigned: z.string().uuid().nullable().optional(),
+        workflowNotes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const actor = await resolveAgentId(ctx.db, ctx.user.id);
+      if (!actor) throw new Error("Agent record not found.");
+
+      const [existingGroupPhase] = await ctx.db
+        .select({ id: workflowPhases.id })
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, input.workflowType),
+            eq(workflowPhases.relatedId, input.relatedId),
+          ),
+        )
+        .limit(1);
+
+      if (!existingGroupPhase) throw new Error("Workflow group not found.");
+
+      const [created] = await ctx.db
+        .insert(workflowPhases)
+        .values({
+          workflowType: input.workflowType,
+          relatedId: input.relatedId,
+          phaseName: input.phaseName,
+          startDate: input.startDate,
+          dueDate: input.dueDate,
+          status: input.status,
+          agentAssigned: input.agentAssigned ?? null,
+          notes: toNull(input.workflowNotes),
+          supportingAgents: [],
+        })
+        .returning();
+
+      if (!created) throw new Error("Failed to create workflow phase.");
+
+      await writeAuditLog(ctx.db, {
+        tableName: "workflow_phases",
+        recordId: created.id,
+        action: "create",
+        actorId: actor.id,
+        actorEmail: actor.email,
+        newData: created as unknown as Record<string, unknown>,
+      });
+
+      return created;
+    }),
+
+  deleteWorkflowPhase: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [existing] = await ctx.db
+        .select()
+        .from(workflowPhases)
+        .where(eq(workflowPhases.id, input.id))
+        .limit(1);
+
+      if (!existing) throw new Error("Workflow phase not found.");
+
+      const groupRows = await ctx.db
+        .select({ id: workflowPhases.id })
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, existing.workflowType),
+            eq(workflowPhases.relatedId, existing.relatedId),
+          ),
+        );
+
+      if (groupRows.length <= 1) {
+        throw new Error("A workflow must contain at least one phase.");
+      }
+
+      const [deleted] = await ctx.db
+        .delete(workflowPhases)
+        .where(eq(workflowPhases.id, input.id))
+        .returning();
+
+      if (!deleted) throw new Error("Failed to delete workflow phase.");
+
+      const actor = await resolveAgentId(ctx.db, ctx.user.id);
+
+      await writeAuditLog(ctx.db, {
+        tableName: "workflow_phases",
+        recordId: input.id,
+        action: "delete",
+        actorId: actor?.id ?? null,
+        actorEmail: actor?.email ?? ctx.user.email ?? null,
+        oldData: deleted as unknown as Record<string, unknown>,
+      });
+
+      return {
+        success: true,
+        deletedId: deleted.id,
+        workflowType: deleted.workflowType,
+        relatedId: deleted.relatedId,
+      };
     }),
 
   /** Self-assign: let an agent claim an unassigned workflow phase */
