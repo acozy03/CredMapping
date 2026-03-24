@@ -2948,6 +2948,7 @@ export default function WorkflowsClient() {
     relatedId: string;
     contextLabel: string;
   } | null>(null);
+  const backendSearch = search.trim() || undefined;
 
   const {
     data: workflows = [],
@@ -2966,6 +2967,7 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
+      search: backendSearch,
       limit: WORKFLOW_FETCH_LIMIT,
       offset: 0,
     },
@@ -3085,35 +3087,10 @@ export default function WorkflowsClient() {
   }, [workflows]);
 
   const filteredWorkflows = useMemo(() => {
-    const trimmedSearch = search.trim().toLowerCase();
-
-    const matchingGroups = trimmedSearch
-      ? groupedWorkflows.filter((group) => {
-          const matchesContext = group.contextLabel
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesType = (
-            WORKFLOW_TYPE_LABELS[group.workflowType] ?? group.workflowType
-          )
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesPhase = group.phases.some((phase) => {
-            const phaseName = String(phase.phaseName ?? "").toLowerCase();
-            const assignedName = String(phase.assignedName ?? "").toLowerCase();
-            return (
-              phaseName.includes(trimmedSearch) ||
-              assignedName.includes(trimmedSearch)
-            );
-          });
-
-          return matchesContext || matchesType || matchesPhase;
-        })
-      : groupedWorkflows;
-
     const getTimestamp = (value: string | Date | null) =>
       value ? new Date(value).getTime() : 0;
 
-    return [...matchingGroups].sort((a, b) => {
+    return [...groupedWorkflows].sort((a, b) => {
       const aStarted = getTimestamp(a.latestStartDate);
       const bStarted = getTimestamp(b.latestStartDate);
       const aAssigned = getTimestamp(a.latestAssignedDate);
@@ -3124,7 +3101,7 @@ export default function WorkflowsClient() {
       if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
       return bAssigned - aAssigned;
     });
-  }, [groupedWorkflows, search, sortBy]);
+  }, [groupedWorkflows, sortBy]);
 
   const filteredPhases = useMemo(
     () => filteredWorkflows.flatMap((group) => group.phases),
