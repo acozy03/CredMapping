@@ -1261,11 +1261,7 @@ function ManageWorkflowPhasesSheet({
     });
   }
 
-  function handleDeletePhase(phaseId: string, phaseNameToDelete: string) {
-    const confirmed = window.confirm(
-      `Delete phase "${phaseNameToDelete}"? This action cannot be undone.`,
-    );
-    if (!confirmed) return;
+  function handleDeletePhase(phaseId: string) {
     deletePhaseMutation.mutate({ id: phaseId });
   }
 
@@ -1331,7 +1327,6 @@ function ManageWorkflowPhasesSheet({
                         onClick={() =>
                           handleDeletePhase(
                             String(phase.id),
-                            String(phase.phaseName),
                           )
                         }
                       >
