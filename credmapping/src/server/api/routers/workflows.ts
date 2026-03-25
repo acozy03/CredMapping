@@ -123,8 +123,118 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      if (input.search) {
-        conditions.push(ilike(workflowPhases.phaseName, `%${input.search}%`));
+      const trimmedSearch = input.search?.trim();
+      if (trimmedSearch) {
+        const searchTerm = `%${trimmedSearch}%`;
+        const matchingGroups = ctx.db
+          .selectDistinct({
+            workflowType: workflowPhases.workflowType,
+            relatedId: workflowPhases.relatedId,
+          })
+          .from(workflowPhases)
+          .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+          .where(
+            or(
+              ilike(workflowPhases.phaseName, searchTerm),
+              ilike(
+                sql`coalesce(${agents.firstName}, '') || ' ' || coalesce(${agents.lastName}, '')`,
+                searchTerm,
+              ),
+              ilike(sql`${workflowPhases.workflowType}::text`, searchTerm),
+              and(
+                eq(workflowPhases.workflowType, "pfc"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(providerFacilityCredentials)
+                    .leftJoin(providers, eq(providerFacilityCredentials.providerId, providers.id))
+                    .leftJoin(facilities, eq(providerFacilityCredentials.facilityId, facilities.id))
+                    .where(
+                      and(
+                        eq(providerFacilityCredentials.id, workflowPhases.relatedId),
+                        or(
+                          ilike(
+                            sql`coalesce(${providers.firstName}, '') || ' ' || coalesce(${providers.lastName}, '')`,
+                            searchTerm,
+                          ),
+                          ilike(facilities.name, searchTerm),
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+              and(
+                eq(workflowPhases.workflowType, "state_licenses"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(providerStateLicenses)
+                    .leftJoin(providers, eq(providerStateLicenses.providerId, providers.id))
+                    .where(
+                      and(
+                        eq(providerStateLicenses.id, workflowPhases.relatedId),
+                        or(
+                          ilike(
+                            sql`coalesce(${providers.firstName}, '') || ' ' || coalesce(${providers.lastName}, '')`,
+                            searchTerm,
+                          ),
+                          ilike(providerStateLicenses.state, searchTerm),
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+              and(
+                eq(workflowPhases.workflowType, "prelive_pipeline"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(facilityPreliveInfo)
+                    .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+                    .where(
+                      and(
+                        eq(facilityPreliveInfo.id, workflowPhases.relatedId),
+                        ilike(facilities.name, searchTerm),
+                      ),
+                    ),
+                ),
+              ),
+              and(
+                eq(workflowPhases.workflowType, "provider_vesta_privileges"),
+                exists(
+                  ctx.db
+                    .select({ one: sql`1` })
+                    .from(providerVestaPrivileges)
+                    .leftJoin(providers, eq(providerVestaPrivileges.providerId, providers.id))
+                    .where(
+                      and(
+                        eq(providerVestaPrivileges.id, workflowPhases.relatedId),
+                        ilike(
+                          sql`coalesce(${providers.firstName}, '') || ' ' || coalesce(${providers.lastName}, '')`,
+                          searchTerm,
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+            ),
+          );
+
+        const matchingGroupsSubquery = matchingGroups.as("matching_groups");
+
+        conditions.push(
+          exists(
+            ctx.db
+              .select({ one: sql`1` })
+              .from(matchingGroupsSubquery)
+              .where(
+                and(
+                  eq(matchingGroupsSubquery.workflowType, workflowPhases.workflowType),
+                  eq(matchingGroupsSubquery.relatedId, workflowPhases.relatedId),
+                ),
+              ),
+          ),
+        );
       }
 
       const rows = await ctx.db
@@ -132,6 +242,7 @@ export const workflowsRouter = createTRPCRouter({
           id: workflowPhases.id,
           workflowType: workflowPhases.workflowType,
           relatedId: workflowPhases.relatedId,
+          phaseNumber: workflowPhases.phaseNumber,
           phaseName: workflowPhases.phaseName,
           status: workflowPhases.status,
           startDate: workflowPhases.startDate,
@@ -166,12 +277,17 @@ export const workflowsRouter = createTRPCRouter({
       const privIds = rows
         .filter((r) => r.workflowType === "provider_vesta_privileges")
         .map((r) => r.relatedId);
+      const preliveIds = rows
+        .filter((r) => r.workflowType === "prelive_pipeline")
+        .map((r) => r.relatedId);
 
       type PfcContext = {
         id: string;
+        providerId: string | null;
         providerFirstName: string | null;
         providerLastName: string | null;
         providerDegree: string | null;
+        facilityId: string | null;
         facilityName: string | null;
       };
 
@@ -180,9 +296,11 @@ export const workflowsRouter = createTRPCRouter({
         const pfcRows = await ctx.db
           .select({
             id: providerFacilityCredentials.id,
+            providerId: providerFacilityCredentials.providerId,
             providerFirstName: providers.firstName,
             providerLastName: providers.lastName,
             providerDegree: providers.degree,
+            facilityId: providerFacilityCredentials.facilityId,
             facilityName: facilities.name,
           })
           .from(providerFacilityCredentials)
@@ -193,11 +311,15 @@ export const workflowsRouter = createTRPCRouter({
       }
 
       // State licenses context: provider name + state
-      let licenseMap = new Map<string, { provName: string; state: string | null }>();
+      let licenseMap = new Map<
+        string,
+        { providerId: string | null; provName: string; state: string | null }
+      >();
       if (licenseIds.length > 0) {
         const licRows = await ctx.db
           .select({
             id: providerStateLicenses.id,
+            providerId: providerStateLicenses.providerId,
             state: providerStateLicenses.state,
             provFirstName: providers.firstName,
             provLastName: providers.lastName,
@@ -209,6 +331,7 @@ export const workflowsRouter = createTRPCRouter({
           licRows.map((r) => [
             r.id,
             {
+              providerId: r.providerId,
               provName: [r.provFirstName, r.provLastName].filter(Boolean).join(" ") || "Unknown Provider",
               state: r.state,
             },
@@ -217,11 +340,15 @@ export const workflowsRouter = createTRPCRouter({
       }
 
       // Vesta privileges context: provider name
-      let privMap = new Map<string, string>();
+      let privMap = new Map<
+        string,
+        { providerId: string | null; providerName: string }
+      >();
       if (privIds.length > 0) {
         const privRows = await ctx.db
           .select({
             id: providerVestaPrivileges.id,
+            providerId: providerVestaPrivileges.providerId,
             provFirstName: providers.firstName,
             provLastName: providers.lastName,
           })
@@ -231,7 +358,35 @@ export const workflowsRouter = createTRPCRouter({
         privMap = new Map(
           privRows.map((r) => [
             r.id,
-            [r.provFirstName, r.provLastName].filter(Boolean).join(" ") || "Unknown Provider",
+            {
+              providerId: r.providerId,
+              providerName:
+                [r.provFirstName, r.provLastName].filter(Boolean).join(" ") ||
+                "Unknown Provider",
+            },
+          ]),
+        );
+      }
+
+      let preliveMap = new Map<string, { facilityId: string | null; facilityName: string }>();
+      if (preliveIds.length > 0) {
+        const preliveRows = await ctx.db
+          .select({
+            id: facilityPreliveInfo.id,
+            facilityId: facilityPreliveInfo.facilityId,
+            facilityName: facilities.name,
+          })
+          .from(facilityPreliveInfo)
+          .leftJoin(facilities, eq(facilityPreliveInfo.facilityId, facilities.id))
+          .where(inArray(facilityPreliveInfo.id, preliveIds));
+
+        preliveMap = new Map(
+          preliveRows.map((r) => [
+            r.id,
+            {
+              facilityId: r.facilityId,
+              facilityName: r.facilityName ?? "Unknown Facility",
+            },
           ]),
         );
       }
@@ -244,20 +399,52 @@ export const workflowsRouter = createTRPCRouter({
             : null;
 
         let contextLabel = "";
+        let providerId: string | null = null;
+        let providerName: string | null = null;
+        let facilityId: string | null = null;
+        let facilityName: string | null = null;
+
         if (row.workflowType === "pfc" && pfc) {
-          const provName = [pfc.providerFirstName, pfc.providerLastName]
+          const provName =
+            [pfc.providerFirstName, pfc.providerLastName]
             .filter(Boolean)
-            .join(" ");
-          contextLabel = `${provName ?? "Unknown Provider"} → ${pfc.facilityName ?? "Unknown Facility"}`;        } else if (row.workflowType === "state_licenses") {
+            .join(" ") || "Unknown Provider";
+          providerId = pfc.providerId;
+          providerName = provName;
+          facilityId = pfc.facilityId;
+          facilityName = pfc.facilityName ?? "Unknown Facility";
+          contextLabel = `${provName} → ${facilityName}`;
+        } else if (row.workflowType === "state_licenses") {
           const lic = licenseMap.get(row.relatedId);
-          if (lic) contextLabel = lic.state ? `${lic.provName} \u2013 ${lic.state}` : lic.provName;
+          if (lic) {
+            providerId = lic.providerId;
+            providerName = lic.provName;
+            contextLabel = lic.state ? `${lic.provName} \u2013 ${lic.state}` : lic.provName;
+          }
+        } else if (row.workflowType === "prelive_pipeline") {
+          const prelive = preliveMap.get(row.relatedId);
+          if (prelive) {
+            facilityId = prelive.facilityId;
+            facilityName = prelive.facilityName;
+            contextLabel = prelive.facilityName;
+          }
         } else if (row.workflowType === "provider_vesta_privileges") {
-          contextLabel = privMap.get(row.relatedId) ?? "";        }
+          const priv = privMap.get(row.relatedId);
+          if (priv) {
+            providerId = priv.providerId;
+            providerName = priv.providerName;
+            contextLabel = priv.providerName;
+          }
+        }
 
         return {
           ...row,
           assignedName,
           contextLabel,
+          providerId,
+          providerName,
+          facilityId,
+          facilityName,
           supportingAgentIds: (row.supportingAgents as string[] | null) ?? [],
         };
       });
@@ -272,6 +459,7 @@ export const workflowsRouter = createTRPCRouter({
           id: workflowPhases.id,
           workflowType: workflowPhases.workflowType,
           relatedId: workflowPhases.relatedId,
+          phaseNumber: workflowPhases.phaseNumber,
           phaseName: workflowPhases.phaseName,
           status: workflowPhases.status,
           startDate: workflowPhases.startDate,
@@ -292,6 +480,77 @@ export const workflowsRouter = createTRPCRouter({
 
       if (!row) throw new Error("Workflow phase not found.");
       return row;
+    }),
+
+  /** List all phases in the same workflow group as a given phase id */
+  listWorkflowGroupPhases: protectedProcedure
+    .input(
+      z.object({
+        workflowId: z.string().uuid(),
+        workflowType: z
+          .enum([
+            "pfc",
+            "state_licenses",
+            "prelive_pipeline",
+            "provider_vesta_privileges",
+          ])
+          .optional(),
+        relatedId: z.string().uuid().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      let groupWorkflowType = input.workflowType;
+      let groupRelatedId = input.relatedId;
+
+      if (!groupWorkflowType || !groupRelatedId) {
+        const [basePhase] = await ctx.db
+          .select({
+            workflowType: workflowPhases.workflowType,
+            relatedId: workflowPhases.relatedId,
+          })
+          .from(workflowPhases)
+          .where(eq(workflowPhases.id, input.workflowId))
+          .limit(1);
+
+        if (!basePhase) throw new Error("Workflow phase not found.");
+        groupWorkflowType = basePhase.workflowType;
+        groupRelatedId = basePhase.relatedId;
+      }
+
+      const rows = await ctx.db
+        .select({
+          id: workflowPhases.id,
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          phaseNumber: workflowPhases.phaseNumber,
+          phaseName: workflowPhases.phaseName,
+          status: workflowPhases.status,
+          startDate: workflowPhases.startDate,
+          dueDate: workflowPhases.dueDate,
+          completedAt: workflowPhases.completedAt,
+          notes: workflowPhases.notes,
+          createdAt: workflowPhases.createdAt,
+          updatedAt: workflowPhases.updatedAt,
+          agentAssigned: workflowPhases.agentAssigned,
+          assignedFirstName: agents.firstName,
+          assignedLastName: agents.lastName,
+        })
+        .from(workflowPhases)
+        .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
+        .where(
+          and(
+            eq(workflowPhases.workflowType, groupWorkflowType),
+            eq(workflowPhases.relatedId, groupRelatedId),
+          ),
+        )
+        .orderBy(
+          sql`CASE WHEN ${workflowPhases.phaseNumber} IS NULL THEN 0 ELSE 1 END`,
+          asc(workflowPhases.phaseNumber),
+          asc(workflowPhases.createdAt),
+          asc(workflowPhases.phaseName),
+        );
+
+      return rows;
     }),
 
   // Fetch providers for create workflow dropdown
@@ -529,9 +788,10 @@ export const workflowsRouter = createTRPCRouter({
         newData: parentRecordData as Record<string, unknown>,
       });
       
-      const phaseRecords = input.phases.map((phase) => ({
+      const phaseRecords = input.phases.map((phase, index) => ({
         workflowType: input.workflowType,
         relatedId: relatedId,
+        phaseNumber: index + 1,
         phaseName: phase.phaseName,
         startDate: phase.startDate,
         dueDate: phase.dueDate,
@@ -630,6 +890,223 @@ export const workflowsRouter = createTRPCRouter({
       });
 
       return updated;
+    }),
+
+  addPhaseToWorkflowGroup: protectedProcedure
+    .input(
+      z.object({
+        workflowType: z.enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges"]),
+        relatedId: z.string().uuid(),
+        phaseName: z.string().trim().min(1),
+        startDate: z.string().date().optional(),
+        dueDate: z.string().date().optional(),
+        status: z.string().trim().optional().default("Pending"),
+        agentAssigned: z.string().uuid().nullable().optional(),
+        workflowNotes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const actor = await resolveAgentId(ctx.db, ctx.user.id);
+      if (!actor) throw new Error("Agent record not found.");
+
+      const [existingGroupPhase] = await ctx.db
+        .select({ id: workflowPhases.id })
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, input.workflowType),
+            eq(workflowPhases.relatedId, input.relatedId),
+          ),
+        )
+        .limit(1);
+
+      if (!existingGroupPhase) throw new Error("Workflow group not found.");
+
+      const [phaseNumberAggregate] = await ctx.db
+        .select({
+          maxPhaseNumber:
+            sql<number>`coalesce(max(${workflowPhases.phaseNumber}), 0)`.as(
+              "max_phase_number",
+            ),
+        })
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, input.workflowType),
+            eq(workflowPhases.relatedId, input.relatedId),
+          ),
+        );
+
+      const nextPhaseNumber = (phaseNumberAggregate?.maxPhaseNumber ?? 0) + 1;
+
+      const [created] = await ctx.db
+        .insert(workflowPhases)
+        .values({
+          workflowType: input.workflowType,
+          relatedId: input.relatedId,
+          phaseNumber: nextPhaseNumber,
+          phaseName: input.phaseName,
+          startDate: input.startDate,
+          dueDate: input.dueDate,
+          status: input.status,
+          agentAssigned: input.agentAssigned ?? null,
+          notes: toNull(input.workflowNotes),
+          supportingAgents: [],
+        })
+        .returning();
+
+      if (!created) throw new Error("Failed to create workflow phase.");
+
+      await writeAuditLog(ctx.db, {
+        tableName: "workflow_phases",
+        recordId: created.id,
+        action: "create",
+        actorId: actor.id,
+        actorEmail: actor.email,
+        newData: created as unknown as Record<string, unknown>,
+      });
+
+      return created;
+    }),
+
+  reorderWorkflowPhases: protectedProcedure
+    .input(
+      z.object({
+        workflowType: z.enum(["pfc", "state_licenses", "prelive_pipeline", "provider_vesta_privileges"]),
+        relatedId: z.string().uuid(),
+        orderedPhaseIds: z.array(z.string().uuid()).min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const actor = await resolveAgentId(ctx.db, ctx.user.id);
+
+      const groupPhases = await ctx.db
+        .select()
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, input.workflowType),
+            eq(workflowPhases.relatedId, input.relatedId),
+          ),
+        );
+
+      if (groupPhases.length === 0) {
+        throw new Error("Workflow group not found.");
+      }
+
+      const uniqueOrderedIds = new Set(input.orderedPhaseIds);
+      if (uniqueOrderedIds.size !== input.orderedPhaseIds.length) {
+        throw new Error("orderedPhaseIds contains duplicate phase ids.");
+      }
+
+      const groupIdSet = new Set(groupPhases.map((phase) => phase.id));
+      if (groupIdSet.size !== input.orderedPhaseIds.length) {
+        throw new Error("orderedPhaseIds must include every phase in the workflow group.");
+      }
+
+      for (const phaseId of input.orderedPhaseIds) {
+        if (!groupIdSet.has(phaseId)) {
+          throw new Error("orderedPhaseIds must match the workflow group exactly.");
+        }
+      }
+
+      const oldById = new Map(groupPhases.map((phase) => [phase.id, phase]));
+
+      const updatedPhases = await ctx.db.transaction(async (tx) => {
+        const updatedRows: InferSelectModel<typeof workflowPhases>[] = [];
+
+        for (const [index, phaseId] of input.orderedPhaseIds.entries()) {
+          const [updated] = await tx
+            .update(workflowPhases)
+            .set({
+              phaseNumber: index + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(workflowPhases.id, phaseId))
+            .returning();
+
+          if (!updated) {
+            throw new Error("Failed to update workflow phase order.");
+          }
+
+          const oldData = oldById.get(phaseId);
+          if (!oldData) {
+            throw new Error("Workflow phase not found in group.");
+          }
+
+          await writeAuditLog(tx, {
+            tableName: "workflow_phases",
+            recordId: updated.id,
+            action: "update",
+            actorId: actor?.id ?? null,
+            actorEmail: actor?.email ?? ctx.user.email ?? null,
+            oldData: oldData as unknown as Record<string, unknown>,
+            newData: updated as unknown as Record<string, unknown>,
+          });
+
+          updatedRows.push(updated);
+        }
+
+        return updatedRows;
+      });
+
+      return {
+        success: true,
+        workflowType: input.workflowType,
+        relatedId: input.relatedId,
+        phases: updatedPhases,
+      };
+    }),
+
+  deleteWorkflowPhase: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [existing] = await ctx.db
+        .select()
+        .from(workflowPhases)
+        .where(eq(workflowPhases.id, input.id))
+        .limit(1);
+
+      if (!existing) throw new Error("Workflow phase not found.");
+
+      const groupRows = await ctx.db
+        .select({ id: workflowPhases.id })
+        .from(workflowPhases)
+        .where(
+          and(
+            eq(workflowPhases.workflowType, existing.workflowType),
+            eq(workflowPhases.relatedId, existing.relatedId),
+          ),
+        );
+
+      if (groupRows.length <= 1) {
+        throw new Error("A workflow must contain at least one phase.");
+      }
+
+      const [deleted] = await ctx.db
+        .delete(workflowPhases)
+        .where(eq(workflowPhases.id, input.id))
+        .returning();
+
+      if (!deleted) throw new Error("Failed to delete workflow phase.");
+
+      const actor = await resolveAgentId(ctx.db, ctx.user.id);
+
+      await writeAuditLog(ctx.db, {
+        tableName: "workflow_phases",
+        recordId: input.id,
+        action: "delete",
+        actorId: actor?.id ?? null,
+        actorEmail: actor?.email ?? ctx.user.email ?? null,
+        oldData: deleted as unknown as Record<string, unknown>,
+      });
+
+      return {
+        success: true,
+        deletedId: deleted.id,
+        workflowType: deleted.workflowType,
+        relatedId: deleted.relatedId,
+      };
     }),
 
   /** Self-assign: let an agent claim an unassigned workflow phase */

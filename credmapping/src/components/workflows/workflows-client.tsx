@@ -8,12 +8,16 @@ import {
   ArrowUpDown,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
+  LayoutList,
   Loader2,
   Pause,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   User,
   UserPlus,
@@ -51,6 +55,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from "~/components/ui/sheet";
 import { Dialog, DialogClose, DialogTrigger } from "~/components/ui/dialog";
 import {
@@ -79,6 +84,17 @@ import { cn } from "~/lib/utils";
 import { Label } from "~/components/ui/label";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 
+import { GroupedWorkflowsView } from "~/components/workflows/grouped-workflows-view";
+import {
+  compareWorkflowPhaseOrder,
+  formatDate,
+  isCompletedStatus,
+  isOverdue,
+  toStartOfDay,
+  WORKFLOW_TYPE_LABELS,
+  type WorkflowSortMode,
+} from "~/components/workflows/workflow-utils";
+
 type WorkflowPhaseInput = {
   phaseName: string;
   startDate: string;
@@ -86,6 +102,10 @@ type WorkflowPhaseInput = {
   status: string;
   agentAssigned: string;
   workflowNotes: string;
+};
+
+type WorkflowPhaseDraft = WorkflowPhaseInput & {
+  clientKey: string;
 };
 
 /* ─── Helpers ──────────────────────────────────────────────── */
@@ -108,13 +128,6 @@ const PFC_PHASES = [
   "Facility Decision",
 ];
 
-const WORKFLOW_TYPE_LABELS: Record<string, string> = {
-  pfc: "PFC",
-  state_licenses: "State Licenses",
-  prelive_pipeline: "Pre-Live Pipeline",
-  provider_vesta_privileges: "Vesta Privileges",
-};
-
 const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
   pfc: "border-violet-500/40 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.12)]",
   state_licenses:
@@ -127,6 +140,153 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
 
 const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
+
+const EMPTY_PHASES: never[] = [];
+
+type WorkflowViewMode = "list" | "grouped";
+
+type WorkflowsFiltersSheetProps = {
+  workflowType: string;
+  onWorkflowTypeChange: (value: string) => void;
+  agentFilter: string;
+  onAgentFilterChange: (value: string) => void;
+  sortBy: WorkflowSortMode;
+  onSortByChange: (value: WorkflowSortMode) => void;
+  agentList: Array<{ id: string | number; name: string | null }>;
+};
+
+function WorkflowsFiltersSheet({
+  workflowType,
+  onWorkflowTypeChange,
+  agentFilter,
+  onAgentFilterChange,
+  sortBy,
+  onSortByChange,
+  agentList,
+}: WorkflowsFiltersSheetProps) {
+  const resetFilters = () => {
+    onWorkflowTypeChange("all");
+    onAgentFilterChange("all");
+    onSortByChange("date_assigned_desc");
+  };
+
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="h-10">
+          <SlidersHorizontal className="size-4" /> Filters & Sort
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="gap-0">
+        <SheetHeader>
+          <SheetTitle>Filters & Sort</SheetTitle>
+        </SheetHeader>
+        <div className="border-border space-y-4 border-t px-4 py-3">
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">
+              Workflow Type
+            </Label>
+            <Select value={workflowType} onValueChange={onWorkflowTypeChange}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="pfc">PFC</SelectItem>
+                <SelectItem value="state_licenses">State Licenses</SelectItem>
+                <SelectItem value="prelive_pipeline">
+                  Pre-Live Pipeline
+                </SelectItem>
+                <SelectItem value="provider_vesta_privileges">
+                  Vesta Privileges
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Agent</Label>
+            <Select value={agentFilter} onValueChange={onAgentFilterChange}>
+              <SelectTrigger className="h-10 w-full">
+                <Users className="text-muted-foreground mr-1.5 size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                <SelectItem value="__me__">My Workflows</SelectItem>
+                {agentList.map((a) => (
+                  <SelectItem key={String(a.id)} value={String(a.id)}>
+                    {String(a.name)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Sort</Label>
+            <Select
+              value={sortBy}
+              onValueChange={(value) =>
+                onSortByChange(value as WorkflowSortMode)
+              }
+            >
+              <SelectTrigger className="h-10 w-full">
+                <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date_assigned_desc">
+                  Date Assigned: Newest
+                </SelectItem>
+                <SelectItem value="date_assigned_asc">
+                  Date Assigned: Oldest
+                </SelectItem>
+                <SelectItem value="date_started_desc">
+                  Date Started: Newest
+                </SelectItem>
+                <SelectItem value="date_started_asc">
+                  Date Started: Oldest
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mt-auto px-4 pb-4">
+          <Separator className="mb-4" />
+          <Button variant="outline" onClick={resetFilters} className="w-full">
+            Reset filters
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function WorkflowsViewToggle({
+  viewMode,
+  onViewModeChange,
+}: {
+  viewMode: WorkflowViewMode;
+  onViewModeChange: (value: WorkflowViewMode) => void;
+}) {
+  return (
+    <Select
+      value={viewMode}
+      onValueChange={(value) => onViewModeChange(value as WorkflowViewMode)}
+    >
+      <SelectTrigger className="h-10 min-w-[130px]">
+        <LayoutList className="text-muted-foreground mr-1.5 size-3.5" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="list">View: List</SelectItem>
+        <SelectItem value="grouped">View: Grouped</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
 
 type DueTone = "critical" | "warning" | "safe";
 
@@ -181,31 +341,6 @@ function WorkflowTypeBadge({ type }: { type: string }) {
   return <Badge className={cn("gap-1", colorMap[type] ?? "")}>{label}</Badge>;
 }
 
-function formatDate(d: string | Date | null | undefined): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function isCompletedStatus(status: string | null | undefined): boolean {
-  const normalized = (status ?? "").toLowerCase();
-  return (
-    normalized.includes("complet") ||
-    normalized === "done" ||
-    normalized === "approved"
-  );
-}
-
-function toStartOfDay(value: string | Date): Date {
-  const date = typeof value === "string" ? new Date(value) : new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
 function getDueTone(dueDate: string | Date | null | undefined): DueTone {
   if (!dueDate) return "safe";
 
@@ -234,6 +369,21 @@ function getWorkflowDueTone(
     .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return nextDue ? getDueTone(nextDue) : "safe";
+}
+
+function createPhaseDraft(
+  phaseName: string,
+  clientKey: string,
+): WorkflowPhaseDraft {
+  return {
+    clientKey,
+    phaseName,
+    startDate: new Date().toISOString().split("T")[0]!,
+    dueDate: "",
+    status: "Pending",
+    agentAssigned: "",
+    workflowNotes: "",
+  };
 }
 
 function WorkflowAutoAdvance({
@@ -302,7 +452,10 @@ function WorkflowAutoAdvance({
   }
 
   return (
-    <div ref={sentinelRef} className="flex min-h-12 items-center justify-center">
+    <div
+      ref={sentinelRef}
+      className="flex min-h-12 items-center justify-center"
+    >
       {loading && (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />
@@ -391,7 +544,7 @@ function IncidentDialog({
     onError: (e) => toast.error(String(e.message)),
   });
 
-  const isPending = createMutation.isPending ?? updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending;
 
   function reset() {
     setSubcategory(incident?.subcategory ?? "");
@@ -687,11 +840,10 @@ function DeleteIncidentDialog({
   );
 }
 
-/* ─── Bulk Incident Dialog (multi-phase, independent forms) ── */
+/* ─── Bulk Incident Dialog (multi-phase, multi-incident) ── */
 
-type BulkPhaseForm = {
-  phaseId: string;
-  phaseName: string;
+type BulkIncidentEntry = {
+  clientKey: string;
   subcategory: string;
   critical: boolean;
   dateIdentified: string;
@@ -700,18 +852,11 @@ type BulkPhaseForm = {
   escalatedTo: string;
 };
 
-function emptyPhaseForm(phase: { id: string; phaseName: string }): BulkPhaseForm {
-  return {
-    phaseId: phase.id,
-    phaseName: phase.phaseName,
-    subcategory: "",
-    critical: false,
-    dateIdentified: "",
-    description: "",
-    immediateResolution: "",
-    escalatedTo: "",
-  };
-}
+type BulkPhaseIncidentGroup = {
+  phaseId: string;
+  phaseName: string;
+  incidents: BulkIncidentEntry[];
+};
 
 function BulkIncidentDialog({
   phases,
@@ -726,12 +871,19 @@ function BulkIncidentDialog({
   // Step 0 = phase selection, step 1 = per-phase forms
   const [step, setStep] = useState<0 | 1>(0);
   const [selectedPhaseIds, setSelectedPhaseIds] = useState<Set<string>>(new Set());
-  const [phaseForms, setPhaseForms] = useState<BulkPhaseForm[]>([]);
-  const [activePhaseIdx, setActivePhaseIdx] = useState(0);
+  const [phaseGroups, setPhaseGroups] = useState<BulkPhaseIncidentGroup[]>([]);
+  const [openPhaseIds, setOpenPhaseIds] = useState<string[]>([]);
+  const incidentIdRef = useRef(0);
 
   const createBulkMutation = api.workflows.createBulkIncidents.useMutation({
     onSuccess: () => {
-      toast.success(`Incident logged for ${phaseForms.length} phase${phaseForms.length !== 1 ? "s" : ""}.`);
+      const totalIncidents = phaseGroups.reduce(
+        (count, group) => count + group.incidents.length,
+        0,
+      );
+      toast.success(
+        `${totalIncidents} incident${totalIncidents !== 1 ? "s" : ""} logged across ${phaseGroups.length} phase${phaseGroups.length !== 1 ? "s" : ""}.`,
+      );
       setOpen(false);
       onSuccess();
     },
@@ -741,8 +893,22 @@ function BulkIncidentDialog({
   function reset() {
     setStep(0);
     setSelectedPhaseIds(new Set());
-    setPhaseForms([]);
-    setActivePhaseIdx(0);
+    setPhaseGroups([]);
+    setOpenPhaseIds([]);
+    incidentIdRef.current = 0;
+  }
+
+  function makeEmptyIncident(): BulkIncidentEntry {
+    const nextId = incidentIdRef.current++;
+    return {
+      clientKey: `bulk-incident-${nextId}`,
+      subcategory: "",
+      critical: false,
+      dateIdentified: "",
+      description: "",
+      immediateResolution: "",
+      escalatedTo: "",
+    };
   }
 
   function togglePhase(id: string) {
@@ -768,49 +934,105 @@ function BulkIncidentDialog({
       return;
     }
     const selected = phases.filter((p) => selectedPhaseIds.has(p.id));
-    setPhaseForms(selected.map(emptyPhaseForm));
-    setActivePhaseIdx(0);
+    setPhaseGroups(
+      selected.map((phase) => ({
+        phaseId: phase.id,
+        phaseName: phase.phaseName,
+        incidents: [makeEmptyIncident()],
+      })),
+    );
+    setOpenPhaseIds(selected[0] ? [selected[0].id] : []);
     setStep(1);
   }
 
-  function updateForm(idx: number, patch: Partial<BulkPhaseForm>) {
-    setPhaseForms((prev) =>
-      prev.map((f, i) => (i === idx ? { ...f, ...patch } : f)),
+  function updateIncident(
+    phaseId: string,
+    incidentKey: string,
+    patch: Partial<BulkIncidentEntry>,
+  ) {
+    setPhaseGroups((prev) =>
+      prev.map((group) =>
+        group.phaseId !== phaseId
+          ? group
+          : {
+              ...group,
+              incidents: group.incidents.map((incident) =>
+                incident.clientKey === incidentKey
+                  ? { ...incident, ...patch }
+                  : incident,
+              ),
+            },
+      ),
     );
   }
 
-  function validateForm(form: BulkPhaseForm): string | null {
-    if (!form.subcategory.trim()) return `"${form.phaseName}" – Subcategory is required.`;
-    if (!form.dateIdentified) return `"${form.phaseName}" – Date identified is required.`;
-    if (!form.escalatedTo) return `"${form.phaseName}" – Escalated To is required.`;
+  function addIncident(phaseId: string) {
+    setPhaseGroups((prev) =>
+      prev.map((group) =>
+        group.phaseId !== phaseId
+          ? group
+          : { ...group, incidents: [...group.incidents, makeEmptyIncident()] },
+      ),
+    );
+  }
+
+  function removeIncident(phaseId: string, incidentKey: string) {
+    setPhaseGroups((prev) =>
+      prev.map((group) => {
+        if (group.phaseId !== phaseId) return group;
+        return {
+          ...group,
+          incidents: group.incidents.filter(
+            (incident) => incident.clientKey !== incidentKey,
+          ),
+        };
+      }),
+    );
+  }
+
+  function validateIncident(incident: BulkIncidentEntry): string | null {
+    if (!incident.subcategory.trim()) return "Subcategory is required.";
+    if (!incident.dateIdentified) return "Date identified is required.";
+    if (!incident.escalatedTo) return "Escalated To is required.";
     return null;
   }
 
   function handleSubmit() {
-    for (const form of phaseForms) {
-      const err = validateForm(form);
-      if (err) {
-        toast.error(err);
-        const errIdx = phaseForms.indexOf(form);
-        if (errIdx !== -1) setActivePhaseIdx(errIdx);
-        return;
+    const totalIncidents = phaseGroups.reduce(
+      (count, group) => count + group.incidents.length,
+      0,
+    );
+    if (totalIncidents === 0) {
+      toast.error("Add at least one incident before submitting.");
+      return;
+    }
+
+    for (const group of phaseGroups) {
+      for (let idx = 0; idx < group.incidents.length; idx += 1) {
+        const incident = group.incidents[idx];
+        if (!incident) continue;
+        const err = validateIncident(incident);
+        if (err) {
+          toast.error(`${group.phaseName} – Incident ${idx + 1}: ${err}`);
+          return;
+        }
       }
     }
 
     createBulkMutation.mutate({
-      incidents: phaseForms.map((f) => ({
-        workflowId: f.phaseId,
-        subcategory: f.subcategory.trim(),
-        critical: f.critical,
-        dateIdentified: f.dateIdentified,
-        incidentDescription: f.description || undefined,
-        immediateResolutionAttempt: f.immediateResolution || undefined,
-        escalatedTo: f.escalatedTo,
-      })),
+      incidents: phaseGroups.flatMap((group) =>
+        group.incidents.map((incident) => ({
+          workflowId: group.phaseId,
+          subcategory: incident.subcategory.trim(),
+          critical: incident.critical,
+          dateIdentified: incident.dateIdentified,
+          incidentDescription: incident.description || undefined,
+          immediateResolutionAttempt: incident.immediateResolution || undefined,
+          escalatedTo: incident.escalatedTo,
+        })),
+      ),
     });
   }
-
-  const activeForm = phaseForms[activePhaseIdx];
 
   return (
     <Dialog
@@ -883,130 +1105,172 @@ function BulkIncidentDialog({
             </ModalFooter>
           </div>
         ) : (
-          /* ── Step 1: Per-phase independent forms ── */
+          /* ── Step 1: Per-phase groups with multiple incidents ── */
           <div className="space-y-4 py-2">
-            {/* Phase tabs */}
-            <div className="flex gap-1 overflow-x-auto rounded-md border p-1">
-              {phaseForms.map((f, idx) => {
-                const hasError = !!validateForm(f);
-                const isFilled = !hasError;
-                return (
-                  <button
-                    key={f.phaseId}
-                    type="button"
-                    onClick={() => setActivePhaseIdx(idx)}
-                    className={cn(
-                      "relative shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                      idx === activePhaseIdx
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {f.phaseName}
-                    {isFilled && idx !== activePhaseIdx && (
-                      <CheckCircle2 className="ml-1 inline size-3 text-emerald-500" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <Accordion
+              type="multiple"
+              value={openPhaseIds}
+              onValueChange={setOpenPhaseIds}
+              className="space-y-2"
+            >
+              {phaseGroups.map((group) => (
+                <AccordionItem
+                  key={group.phaseId}
+                  value={group.phaseId}
+                  className="overflow-hidden rounded-md border last:border-b"
+                >
+                  <AccordionTrigger className="hover:bg-muted/40 px-3 py-2 text-left hover:no-underline">
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+                      <p className="truncate text-sm font-semibold">
+                        {group.phaseName}
+                      </p>
+                      <p className="text-muted-foreground shrink-0 text-xs">
+                        {group.incidents.length} incident
+                        {group.incidents.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 border-t px-3 pt-3 pb-3">
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addIncident(group.phaseId)}
+                      >
+                        <Plus className="mr-1 size-3.5" />
+                        Add another incident
+                      </Button>
+                    </div>
 
-            {/* Active phase form */}
-            {activeForm && (
-              <div className="space-y-3 rounded-md border p-3">
-                <p className="text-sm font-semibold">{activeForm.phaseName}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Subcategory *</Label>
-                    <Input
-                      value={activeForm.subcategory}
-                      onChange={(e) => updateForm(activePhaseIdx, { subcategory: e.target.value })}
-                      placeholder="e.g. Missing Documentation"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Date Identified *</Label>
-                    <Input
-                      type="date"
-                      value={activeForm.dateIdentified}
-                      onChange={(e) => updateForm(activePhaseIdx, { dateIdentified: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Escalated To *</Label>
-                    <Select
-                      value={activeForm.escalatedTo}
-                      onValueChange={(v) => updateForm(activePhaseIdx, { escalatedTo: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select agent…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {agents.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name}
-                          </SelectItem>
+                    {group.incidents.length === 0 ? (
+                      <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
+                        No incidents added yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {group.incidents.map((incident, incidentIdx) => (
+                          <div
+                            key={incident.clientKey}
+                            className="space-y-3 rounded-md border bg-muted/20 p-3"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium">
+                                Incident {incidentIdx + 1}
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  removeIncident(group.phaseId, incident.clientKey)
+                                }
+                              >
+                                <Trash2 className="mr-1 size-3.5" />
+                                Remove
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="col-span-2 space-y-1.5">
+                                <Label>Subcategory *</Label>
+                                <Input
+                                  value={incident.subcategory}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      subcategory: e.target.value,
+                                    })
+                                  }
+                                  placeholder="e.g. Missing Documentation"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Date Identified *</Label>
+                                <Input
+                                  type="date"
+                                  value={incident.dateIdentified}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      dateIdentified: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Escalated To *</Label>
+                                <Select
+                                  value={incident.escalatedTo}
+                                  onValueChange={(value) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      escalatedTo: value,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select agent…" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {agents.map((a) => (
+                                      <SelectItem key={a.id} value={a.id}>
+                                        {a.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="col-span-2 flex items-center gap-2 pt-1">
+                                <Checkbox
+                                  id={`bulk-critical-${group.phaseId}-${incident.clientKey}`}
+                                  checked={incident.critical}
+                                  onCheckedChange={(checked) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      critical: checked === true,
+                                    })
+                                  }
+                                />
+                                <Label
+                                  htmlFor={`bulk-critical-${group.phaseId}-${incident.clientKey}`}
+                                  className="font-normal"
+                                >
+                                  Critical Incident
+                                </Label>
+                              </div>
+
+                              <div className="col-span-2 space-y-1.5">
+                                <Label>Description</Label>
+                                <Textarea
+                                  rows={2}
+                                  value={incident.description}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      description: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+
+                              <div className="col-span-2 space-y-1.5">
+                                <Label>Immediate Resolution Attempt</Label>
+                                <Textarea
+                                  rows={2}
+                                  value={incident.immediateResolution}
+                                  onChange={(e) =>
+                                    updateIncident(group.phaseId, incident.clientKey, {
+                                      immediateResolution: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="col-span-2 flex items-center gap-2 pt-1">
-                    <Checkbox
-                      id={`bulk-critical-${activeForm.phaseId}`}
-                      checked={activeForm.critical}
-                      onCheckedChange={(v) => updateForm(activePhaseIdx, { critical: v === true })}
-                    />
-                    <Label htmlFor={`bulk-critical-${activeForm.phaseId}`} className="font-normal">
-                      Critical Incident
-                    </Label>
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Description</Label>
-                    <Textarea
-                      rows={2}
-                      value={activeForm.description}
-                      onChange={(e) => updateForm(activePhaseIdx, { description: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Immediate Resolution Attempt</Label>
-                    <Textarea
-                      rows={2}
-                      value={activeForm.immediateResolution}
-                      onChange={(e) => updateForm(activePhaseIdx, { immediateResolution: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                {/* Prev / Next within phases */}
-                <div className="flex items-center justify-between pt-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={activePhaseIdx === 0}
-                    onClick={() => setActivePhaseIdx((i) => i - 1)}
-                  >
-                    ← Prev Phase
-                  </Button>
-                  <span className="text-muted-foreground text-xs">
-                    {activePhaseIdx + 1} / {phaseForms.length}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={activePhaseIdx === phaseForms.length - 1}
-                    onClick={() => setActivePhaseIdx((i) => i + 1)}
-                  >
-                    Next Phase →
-                  </Button>
-                </div>
-              </div>
-            )}
+                      </div>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
 
             <ModalFooter>
               <Button variant="outline" onClick={() => setStep(0)}>
@@ -1014,7 +1278,18 @@ function BulkIncidentDialog({
               </Button>
               <Button onClick={handleSubmit} disabled={createBulkMutation.isPending}>
                 {createBulkMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                Log {phaseForms.length} Incident{phaseForms.length !== 1 ? "s" : ""}
+                Log{" "}
+                {phaseGroups.reduce(
+                  (count, group) => count + group.incidents.length,
+                  0,
+                )}{" "}
+                Incident
+                {phaseGroups.reduce(
+                  (count, group) => count + group.incidents.length,
+                  0,
+                ) !== 1
+                  ? "s"
+                  : ""}
               </Button>
             </ModalFooter>
           </div>
@@ -1025,6 +1300,408 @@ function BulkIncidentDialog({
 }
 
 /* ─── Workflow Detail Sheet ──────────────────────────────── */
+
+type ManageWorkflowPhasesSheetProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workflowId: string;
+  workflowType: "pfc" | "state_licenses" | "prelive_pipeline" | "provider_vesta_privileges";
+  relatedId: string;
+  contextLabel: string;
+  agentList: { id: string; name: string; email: string }[];
+  statusSuggestions: string[];
+  onOpenPhase: (workflowId: string) => void;
+};
+
+function ManageWorkflowPhasesSheet({
+  open,
+  onOpenChange,
+  workflowId,
+  workflowType,
+  relatedId,
+  contextLabel,
+  agentList,
+  statusSuggestions,
+  onOpenPhase,
+}: ManageWorkflowPhasesSheetProps) {
+  const utils = api.useUtils();
+
+  const { data: groupPhases = EMPTY_PHASES, isLoading } =
+    api.workflows.listWorkflowGroupPhases.useQuery(
+      { workflowId, workflowType, relatedId },
+      { enabled: open && Boolean(workflowId) },
+    );
+
+  const [newPhaseName, setNewPhaseName] = useState("");
+  const [newPhaseStatus, setNewPhaseStatus] = useState("Pending");
+  const [newPhaseAgentAssigned, setNewPhaseAgentAssigned] = useState<
+    string | null
+  >(null);
+  const [newPhaseStartDate, setNewPhaseStartDate] = useState("");
+  const [newPhaseDueDate, setNewPhaseDueDate] = useState("");
+  const [newPhaseNotes, setNewPhaseNotes] = useState("");
+  const serverSortedGroupPhases = useMemo(
+    () => [...groupPhases].sort(compareWorkflowPhaseOrder),
+    [groupPhases],
+  );
+  const [orderedGroupPhases, setOrderedGroupPhases] = useState<
+    typeof serverSortedGroupPhases
+  >([]);
+  const [hasLocalReorderSession, setHasLocalReorderSession] = useState(false);
+
+  const hasUnsavedOrderChanges = useMemo(() => {
+    if (orderedGroupPhases.length !== serverSortedGroupPhases.length) {
+      return true;
+    }
+
+    return orderedGroupPhases.some(
+      (phase, index) =>
+        String(phase.id) !== String(serverSortedGroupPhases[index]?.id),
+    );
+  }, [orderedGroupPhases, serverSortedGroupPhases]);
+
+  function samePhaseOrder(a: typeof serverSortedGroupPhases, b: typeof serverSortedGroupPhases) {
+    return a.length === b.length && a.every((phase, index) => String(phase.id) === String(b[index]?.id));
+  }
+
+  useEffect(() => {
+    if (!open) {
+      if (!samePhaseOrder(orderedGroupPhases, serverSortedGroupPhases)) {
+        setOrderedGroupPhases(serverSortedGroupPhases);
+      }
+      setHasLocalReorderSession(false);
+      return;
+    }
+
+    if (!hasLocalReorderSession && !samePhaseOrder(orderedGroupPhases, serverSortedGroupPhases)) {
+      setOrderedGroupPhases(serverSortedGroupPhases);
+    }
+  }, [open, serverSortedGroupPhases, hasLocalReorderSession]);
+
+  useEffect(() => {
+    if (!hasUnsavedOrderChanges && hasLocalReorderSession) {
+      setHasLocalReorderSession(false);
+    }
+  }, [hasUnsavedOrderChanges, hasLocalReorderSession]);
+
+  const addPhaseMutation = api.workflows.addPhaseToWorkflowGroup.useMutation({
+    onSuccess: (created) => {
+      toast.success("Phase added.");
+      setNewPhaseName("");
+      setNewPhaseStatus("Pending");
+      setNewPhaseAgentAssigned(null);
+      setNewPhaseStartDate("");
+      setNewPhaseDueDate("");
+      setNewPhaseNotes("");
+      void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
+      void utils.workflows.getById.invalidate({ id: String(created.id) });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId,
+        workflowType,
+        relatedId,
+      });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId: String(created.id),
+        workflowType,
+        relatedId,
+      });
+    },
+    onError: (e) => toast.error(String(e.message)),
+  });
+
+  const deletePhaseMutation = api.workflows.deleteWorkflowPhase.useMutation({
+    onSuccess: () => {
+      toast.success("Phase deleted.");
+      void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId,
+        workflowType,
+        relatedId,
+      });
+    },
+    onError: (e) => toast.error(String(e.message)),
+  });
+
+  const reorderPhasesMutation = api.workflows.reorderWorkflowPhases.useMutation({
+    onSuccess: (_, variables) => {
+      toast.success("Phase order updated.");
+      setHasLocalReorderSession(false);
+      void utils.workflows.list.invalidate();
+      void utils.workflows.getById.invalidate({ id: workflowId });
+      for (const phaseId of variables.orderedPhaseIds) {
+        void utils.workflows.getById.invalidate({ id: phaseId });
+      }
+      void utils.workflows.listWorkflowGroupPhases.invalidate({
+        workflowId,
+        workflowType,
+        relatedId,
+      });
+    },
+    onError: (e) => toast.error(String(e.message)),
+  });
+
+  function handleAddPhase() {
+    addPhaseMutation.mutate({
+      workflowType,
+      relatedId,
+      phaseName: newPhaseName.trim(),
+      status: newPhaseStatus.trim() || "Pending",
+      startDate: newPhaseStartDate || undefined,
+      dueDate: newPhaseDueDate || undefined,
+      agentAssigned: newPhaseAgentAssigned,
+      workflowNotes: newPhaseNotes || undefined,
+    });
+  }
+
+  function handleDeletePhase(phaseId: string) {
+    deletePhaseMutation.mutate({ id: phaseId });
+  }
+
+  function handleMovePhase(index: number, direction: "up" | "down") {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= orderedGroupPhases.length) return;
+
+    const reordered = [...orderedGroupPhases];
+    const [movedPhase] = reordered.splice(index, 1);
+    if (!movedPhase) return;
+    reordered.splice(targetIndex, 0, movedPhase);
+    setOrderedGroupPhases(reordered);
+    setHasLocalReorderSession(true);
+  }
+
+  function handleSaveOrder() {
+    reorderPhasesMutation.mutate({
+      workflowType,
+      relatedId,
+      orderedPhaseIds: orderedGroupPhases.map((phase) => String(phase.id)),
+    });
+  }
+
+  function handleCancelReorder() {
+    setOrderedGroupPhases(serverSortedGroupPhases);
+    setHasLocalReorderSession(false);
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
+        <SheetHeader className="border-b px-6 pt-6 pr-14 pb-4">
+          <SheetTitle>Manage Phases</SheetTitle>
+          <p className="text-muted-foreground text-sm">
+            {WORKFLOW_TYPE_LABELS[workflowType] ?? workflowType} ·{" "}
+            {contextLabel || "Workflow group"}
+          </p>
+        </SheetHeader>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="space-y-3 rounded-md border p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Workflow Group Phase List</p>
+              <div className="flex items-center gap-2">
+                {hasUnsavedOrderChanges && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelReorder}
+                      disabled={reorderPhasesMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveOrder}
+                      disabled={reorderPhasesMutation.isPending}
+                    >
+                      {reorderPhasesMutation.isPending && (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      )}
+                      Save Order
+                    </Button>
+                  </>
+                )}
+                <Badge variant="secondary">{orderedGroupPhases.length} phases</Badge>
+              </div>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="text-muted-foreground size-5 animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {orderedGroupPhases.map((phase, index) => {
+                  const assigned = phase.assignedFirstName
+                    ? `${phase.assignedFirstName} ${phase.assignedLastName ?? ""}`.trim()
+                    : "Unassigned";
+
+                  return (
+                    <div
+                      key={String(phase.id)}
+                      className="flex items-center gap-3 rounded-md border p-2.5"
+                    >
+                      <span className="text-muted-foreground w-8 shrink-0 text-xs font-medium">
+                        {index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          onOpenPhase(String(phase.id));
+                          onOpenChange(false);
+                        }}
+                      >
+                        <p className="truncate text-sm font-medium">
+                          {phase.phaseName}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {phase.status ?? "Pending"} · {assigned}
+                        </p>
+                      </button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={reorderPhasesMutation.isPending || index === 0}
+                        onClick={() => handleMovePhase(index, "up")}
+                      >
+                        <ChevronUp className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={
+                          reorderPhasesMutation.isPending ||
+                          index === orderedGroupPhases.length - 1
+                        }
+                        onClick={() => handleMovePhase(index, "down")}
+                      >
+                        <ChevronDown className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive hover:bg-destructive/10"
+                        disabled={
+                          reorderPhasesMutation.isPending ||
+                          deletePhaseMutation.isPending ||
+                          orderedGroupPhases.length <= 1
+                        }
+                        onClick={() =>
+                          handleDeletePhase(
+                            String(phase.id),
+                          )
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 rounded-md border p-4">
+            <p className="text-sm font-medium">Add Phase</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Phase Name
+                </Label>
+                <Input
+                  value={newPhaseName}
+                  onChange={(e) => setNewPhaseName(e.target.value)}
+                  placeholder="Enter phase name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">Status</Label>
+                <Input
+                  list="manage-group-phase-status-suggestions"
+                  value={newPhaseStatus}
+                  onChange={(e) => setNewPhaseStatus(e.target.value)}
+                  placeholder="Pending"
+                />
+                <datalist id="manage-group-phase-status-suggestions">
+                  {statusSuggestions.map((suggestion) => (
+                    <option key={suggestion} value={suggestion} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Assigned Agent
+                </Label>
+                <Select
+                  value={newPhaseAgentAssigned ?? "__none"}
+                  onValueChange={(value) =>
+                    setNewPhaseAgentAssigned(value === "__none" ? null : value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Unassigned</SelectItem>
+                    {agentList.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Start Date
+                </Label>
+                <Input
+                  type="date"
+                  value={newPhaseStartDate}
+                  onChange={(e) => setNewPhaseStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-xs">
+                  Due Date
+                </Label>
+                <Input
+                  type="date"
+                  value={newPhaseDueDate}
+                  onChange={(e) => setNewPhaseDueDate(e.target.value)}
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-muted-foreground text-xs">Notes</Label>
+                <Textarea
+                  rows={2}
+                  value={newPhaseNotes}
+                  onChange={(e) => setNewPhaseNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                disabled={
+                  addPhaseMutation.isPending || newPhaseName.trim().length === 0
+                }
+                onClick={handleAddPhase}
+              >
+                {addPhaseMutation.isPending && (
+                  <Loader2 className="mr-2 size-3.5 animate-spin" />
+                )}
+                <Plus className="mr-1 size-3.5" />
+                Add Phase
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
 function WorkflowDetailSheet({
   workflowId,
@@ -1466,41 +2143,27 @@ function AddWorkflowDialog() {
     "Inactive" | "Full" | "Temp" | "In Progress" | undefined
   >("In Progress");
 
-  const [phases, setPhases] = useState<WorkflowPhaseInput[]>(() =>
-    PFC_PHASES.map((name) => ({
-      phaseName: name,
-      startDate: new Date().toISOString().split("T")[0]!,
-      dueDate: "",
-      status: "Pending",
-      agentAssigned: "",
-      workflowNotes: "",
-    })),
+  const phaseKeyCounterRef = useRef(0);
+  const getNextPhaseKey = () => `phase-${phaseKeyCounterRef.current++}`;
+
+  const [phases, setPhases] = useState<WorkflowPhaseDraft[]>(() =>
+    PFC_PHASES.map((name) =>
+      createPhaseDraft(name, `phase-${phaseKeyCounterRef.current++}`),
+    ),
   );
 
   // Update logic when workflow type changes
   useEffect(() => {
     if (workflowType === "pfc") {
       setPhases(
-        PFC_PHASES.map((name) => ({
-          phaseName: name,
-          startDate: new Date().toISOString().split("T")[0]!,
-          dueDate: "",
-          status: "Pending",
-          agentAssigned: "",
-          workflowNotes: "",
-        })),
+        PFC_PHASES.map((name) => createPhaseDraft(name, getNextPhaseKey())),
       );
     } else {
       // Default to 3 generic phases for other types
       setPhases(
-        [1, 2, 3].map((num) => ({
-          phaseName: `Phase ${num}`,
-          startDate: new Date().toISOString().split("T")[0]!,
-          dueDate: "",
-          status: "Pending",
-          agentAssigned: "",
-          workflowNotes: "",
-        })),
+        [1, 2, 3].map((num) =>
+          createPhaseDraft(`Phase ${num}`, getNextPhaseKey()),
+        ),
       );
     }
   }, [workflowType]);
@@ -1510,30 +2173,24 @@ function AddWorkflowDialog() {
     field: K,
     value: WorkflowPhaseInput[K],
   ) => {
-    const nextPhases = [...phases];
-    const targetPhase = nextPhases[index];
-    if (targetPhase) {
-      targetPhase[field] = value;
-      setPhases(nextPhases);
-    }
+    setPhases((current) =>
+      current.map((phase, phaseIndex) =>
+        phaseIndex === index ? { ...phase, [field]: value } : phase,
+      ),
+    );
   };
 
   const addPhase = () => {
-    setPhases([
-      ...phases,
-      {
-        phaseName: `Phase ${phases.length + 1}`,
-        startDate: new Date().toISOString().split("T")[0]!,
-        dueDate: "",
-        status: "Pending",
-        agentAssigned: "",
-        workflowNotes: "",
-      },
+    setPhases((current) => [
+      ...current,
+      createPhaseDraft(`Phase ${current.length + 1}`, getNextPhaseKey()),
     ]);
   };
 
   const removePhase = (indexToRemove: number) => {
-    setPhases(phases.filter((_, index) => index !== indexToRemove));
+    setPhases((current) =>
+      current.filter((_, index) => index !== indexToRemove),
+    );
   };
 
   const { data: providers = [], isLoading: isLoadingProviders } =
@@ -1597,14 +2254,7 @@ function AddWorkflowDialog() {
     setVestaPrivilegeTier("In Progress");
 
     setPhases(
-      PFC_PHASES.map((name) => ({
-        phaseName: name,
-        startDate: new Date().toISOString().split("T")[0]!,
-        dueDate: "",
-        status: "Pending",
-        agentAssigned: "",
-        workflowNotes: "",
-      })),
+      PFC_PHASES.map((name) => createPhaseDraft(name, getNextPhaseKey())),
     );
   }
 
@@ -1631,8 +2281,10 @@ function AddWorkflowDialog() {
       providerId: needsProvider ? providerId : undefined,
       facilityId: needsFacility ? facilityId : undefined,
       phases: phases.map((p) => ({
-        ...p,
+        phaseName: p.phaseName,
+        startDate: p.startDate,
         dueDate: p.dueDate || undefined,
+        status: p.status,
         agentAssigned: p.agentAssigned || undefined,
         workflowNotes: p.workflowNotes || undefined,
       })),
@@ -2247,8 +2899,8 @@ function AddWorkflowDialog() {
               {phases && phases.length > 0 ? (
                 phases.map((phase, index) => (
                   <AccordionItem
-                    key={index}
-                    value={`phase-${index}`}
+                    key={phase.clientKey}
+                    value={phase.clientKey}
                     className="w-full border-b px-3 last:border-b-0"
                   >
                     <div className="flex w-full items-center gap-2 [&>h3]:flex-1">
@@ -2411,11 +3063,24 @@ export default function WorkflowsClient() {
 
   const [workflowType, setWorkflowType] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("date_assigned_desc");
+  const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
   const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [phaseManagerGroup, setPhaseManagerGroup] = useState<{
+    workflowId: string;
+    workflowType:
+      | "pfc"
+      | "state_licenses"
+      | "prelive_pipeline"
+      | "provider_vesta_privileges";
+    relatedId: string;
+    contextLabel: string;
+  } | null>(null);
+  const backendSearch = debouncedSearch.trim() || undefined;
 
   const {
     data: workflows = [],
@@ -2434,6 +3099,7 @@ export default function WorkflowsClient() {
         agentFilter !== "all" && agentFilter !== "__me__"
           ? agentFilter
           : undefined,
+      search: backendSearch,
       limit: WORKFLOW_FETCH_LIMIT,
       offset: 0,
     },
@@ -2493,8 +3159,7 @@ export default function WorkflowsClient() {
       const key = `${wf.workflowType}:${wf.relatedId}`;
       const statusLower = (wf.status ?? "").toLowerCase();
       const isDone = isCompletedStatus(wf.status);
-      const isOverdue =
-        !!wf.dueDate && new Date(String(wf.dueDate)) < new Date() && !isDone;
+      const wfIsOverdue = isOverdue(wf.dueDate, wf.status);
       const isBlocked = statusLower === "blocked";
       const phaseIncidents =
         typeof wf.incidentCount === "number" ? wf.incidentCount : 0;
@@ -2505,7 +3170,7 @@ export default function WorkflowsClient() {
         existing.totalCount++;
         existing.incidentCount += phaseIncidents;
         if (isDone) existing.completedCount++;
-        if (isOverdue) existing.hasOverdue = true;
+        if (wfIsOverdue) existing.hasOverdue = true;
         if (isBlocked) existing.hasBlocked = true;
         if (
           wf.startDate &&
@@ -2544,7 +3209,7 @@ export default function WorkflowsClient() {
           latestUpdate: wf.updatedAt,
           latestStartDate: wf.startDate,
           latestAssignedDate: wf.createdAt,
-          hasOverdue: isOverdue,
+          hasOverdue: wfIsOverdue,
           hasBlocked: isBlocked,
         });
       }
@@ -2554,35 +3219,10 @@ export default function WorkflowsClient() {
   }, [workflows]);
 
   const filteredWorkflows = useMemo(() => {
-    const trimmedSearch = search.trim().toLowerCase();
-
-    const matchingGroups = trimmedSearch
-      ? groupedWorkflows.filter((group) => {
-          const matchesContext = group.contextLabel
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesType = (
-            WORKFLOW_TYPE_LABELS[group.workflowType] ?? group.workflowType
-          )
-            .toLowerCase()
-            .includes(trimmedSearch);
-          const matchesPhase = group.phases.some((phase) => {
-            const phaseName = String(phase.phaseName ?? "").toLowerCase();
-            const assignedName = String(phase.assignedName ?? "").toLowerCase();
-            return (
-              phaseName.includes(trimmedSearch) ||
-              assignedName.includes(trimmedSearch)
-            );
-          });
-
-          return matchesContext || matchesType || matchesPhase;
-        })
-      : groupedWorkflows;
-
     const getTimestamp = (value: string | Date | null) =>
       value ? new Date(value).getTime() : 0;
 
-    return [...matchingGroups].sort((a, b) => {
+    return [...groupedWorkflows].sort((a, b) => {
       const aStarted = getTimestamp(a.latestStartDate);
       const bStarted = getTimestamp(b.latestStartDate);
       const aAssigned = getTimestamp(a.latestAssignedDate);
@@ -2593,7 +3233,7 @@ export default function WorkflowsClient() {
       if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
       return bAssigned - aAssigned;
     });
-  }, [groupedWorkflows, search, sortBy]);
+  }, [groupedWorkflows, sortBy]);
 
   const filteredPhases = useMemo(
     () => filteredWorkflows.flatMap((group) => group.phases),
@@ -2602,7 +3242,14 @@ export default function WorkflowsClient() {
 
   useEffect(() => {
     setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, search, sortBy]);
+  }, [workflowType, agentFilter, debouncedSearch, sortBy]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
 
   const visibleGroups = useMemo(
     () => filteredWorkflows.slice(0, visibleCount),
@@ -2622,71 +3269,32 @@ export default function WorkflowsClient() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_180px_180px_220px_auto]">
-        <div className="relative min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative min-w-0 flex-1 sm:min-w-[260px]">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             className="h-10 w-full pl-9"
-            placeholder="Search workflows, phases, or agents…"
+            placeholder="Search workflows..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        <Select value={workflowType} onValueChange={setWorkflowType}>
-          <SelectTrigger className="h-10 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="pfc">PFC</SelectItem>
-            <SelectItem value="state_licenses">State Licenses</SelectItem>
-            <SelectItem value="prelive_pipeline">Pre-Live Pipeline</SelectItem>
-            <SelectItem value="provider_vesta_privileges">
-              Vesta Privileges
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={agentFilter} onValueChange={setAgentFilter}>
-          <SelectTrigger className="h-10 w-full">
-            <Users className="text-muted-foreground mr-1.5 size-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Agents</SelectItem>
-            <SelectItem value="__me__">My Workflows</SelectItem>
-            {agentList.map((a) => (
-              <SelectItem key={String(a.id)} value={String(a.id)}>
-                {String(a.name)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="h-10 w-full">
-            <ArrowUpDown className="text-muted-foreground mr-1.5 size-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date_assigned_desc">
-              Date Assigned: Newest
-            </SelectItem>
-            <SelectItem value="date_assigned_asc">
-              Date Assigned: Oldest
-            </SelectItem>
-            <SelectItem value="date_started_desc">
-              Date Started: Newest
-            </SelectItem>
-            <SelectItem value="date_started_asc">
-              Date Started: Oldest
-            </SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="flex h-10 items-center justify-end gap-2">
-          {isFetching && !isLoading && (
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end">
+          <WorkflowsFiltersSheet
+            workflowType={workflowType}
+            onWorkflowTypeChange={setWorkflowType}
+            agentFilter={agentFilter}
+            onAgentFilterChange={setAgentFilter}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            agentList={agentList}
+          />
+          <WorkflowsViewToggle
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
+          {(isFetching || (search !== debouncedSearch)) && !isLoading && (
             <Loader2 className="text-muted-foreground size-4 animate-spin" />
           )}
           <AddWorkflowDialog />
@@ -2697,7 +3305,7 @@ export default function WorkflowsClient() {
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
-      ) : filteredWorkflows.length === 0 ? (
+      ) : filteredPhases.length === 0 ? (
         <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
           <Workflow className="text-muted-foreground/50 size-10" />
           <h3 className="mt-4 text-lg font-semibold">No workflows found</h3>
@@ -2707,6 +3315,25 @@ export default function WorkflowsClient() {
               : "Workflow phases are created when providers are assigned to facilities."}
           </p>
         </div>
+      ) : viewMode === "grouped" ? (
+        <GroupedWorkflowsView
+          rows={filteredPhases}
+          sortBy={sortBy}
+          claimPending={selfAssignMutation.isPending}
+          onOpenWorkflow={setSelectedId}
+          onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
+          onManagePhases={setPhaseManagerGroup}
+          renderRelatedWorkflowActions={({ relatedWorkflow }) => (
+            <BulkIncidentDialog
+              phases={relatedWorkflow.rows.map((row) => ({
+                id: String(row.id),
+                phaseName: String(row.phaseName),
+              }))}
+              agents={agentList}
+              onSuccess={() => void utils.workflows.list.invalidate()}
+            />
+          )}
+        />
       ) : (
         <VirtualScrollContainer
           className="overflow-hidden"
@@ -2714,206 +3341,238 @@ export default function WorkflowsClient() {
           viewportClassName="workflows-scroll-viewport"
         >
           <div className="space-y-3 p-4">
-          {visibleGroups.map((group) => {
-            const isExpanded = expandedGroups.has(String(group.key));
-            const progress =
-              group.totalCount > 0
-                ? Math.round((group.completedCount / group.totalCount) * 100)
-                : 0;
-            const dueTone = getWorkflowDueTone(group.phases);
+            {visibleGroups.map((group) => {
+              const isExpanded = expandedGroups.has(String(group.key));
+              const progress =
+                group.totalCount > 0
+                  ? Math.round((group.completedCount / group.totalCount) * 100)
+                  : 0;
+              const dueTone = getWorkflowDueTone(group.phases);
+              const expandedPhases =
+                [...group.phases].sort(compareWorkflowPhaseOrder);
 
-            return (
-              <div
-                key={group.key}
-                className={cn(
-                  "bg-card overflow-hidden rounded-lg border",
-                  WORKFLOW_TYPE_OUTLINE_STYLES[group.workflowType],
-                )}
-              >
-                <button
-                  className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
-                  onClick={() => toggleGroup(String(group.key))}
+              return (
+                <div
+                  key={group.key}
+                  className={cn(
+                    "bg-card overflow-hidden rounded-lg border",
+                    WORKFLOW_TYPE_OUTLINE_STYLES[group.workflowType],
+                  )}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.18em] uppercase">
-                            {WORKFLOW_TYPE_LABELS[group.workflowType] ??
-                              group.workflowType}
-                          </p>
-                          <h3 className="truncate text-base font-semibold">
-                            {group.contextLabel}
-                          </h3>
-                        </div>
-                        <div className="flex flex-wrap justify-start gap-2 sm:max-w-[50%] sm:justify-end">
-                          {group.hasOverdue && (
-                            <Badge className="h-5 border-red-500/25 bg-red-500/15 py-0 text-[10px] text-red-600">
-                              OVERDUE
-                            </Badge>
-                          )}
-                          {group.hasBlocked && (
-                            <Badge className="h-5 border-amber-500/25 bg-amber-500/15 py-0 text-[10px] text-amber-600">
-                              BLOCKED
-                            </Badge>
-                          )}
-                          {group.incidentCount > 0 && (
-                            <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 py-0 text-[10px] text-orange-600">
-                              <AlertTriangle className="size-2.5" />
-                              {group.incidentCount} incident
-                              {group.incidentCount !== 1 ? "s" : ""}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-3">
-                        <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all",
-                              WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
+                  <button
+                    className="hover:bg-muted/40 w-full p-4 text-left transition-colors"
+                    onClick={() => toggleGroup(String(group.key))}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.18em] uppercase">
+                              {WORKFLOW_TYPE_LABELS[group.workflowType] ??
+                                group.workflowType}
+                            </p>
+                            <h3 className="truncate text-base font-semibold">
+                              {group.contextLabel}
+                            </h3>
+                          </div>
+                          <div className="flex flex-wrap justify-start gap-2 sm:max-w-[50%] sm:justify-end">
+                            {group.hasOverdue && (
+                              <Badge className="h-5 border-red-500/25 bg-red-500/15 py-0 text-[10px] text-red-600">
+                                OVERDUE
+                              </Badge>
                             )}
-                            style={{ width: `${progress}%` }}
-                          />
+                            {group.hasBlocked && (
+                              <Badge className="h-5 border-amber-500/25 bg-amber-500/15 py-0 text-[10px] text-amber-600">
+                                BLOCKED
+                              </Badge>
+                            )}
+                            {group.incidentCount > 0 && (
+                              <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 py-0 text-[10px] text-orange-600">
+                                <AlertTriangle className="size-2.5" />
+                                {group.incidentCount} incident
+                                {group.incidentCount !== 1 ? "s" : ""}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-muted-foreground shrink-0 text-xs">
-                          {group.completedCount}/{group.totalCount} phase
-                          {group.totalCount !== 1 ? "s" : ""} done · Updated{" "}
-                          {formatDate(
-                            group.latestUpdate
-                              ? String(group.latestUpdate)
-                              : undefined,
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={cn(
-                        "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
-                        isExpanded && "rotate-90",
-                      )}
-                    />
-                  </div>
-                </button>
 
-                {isExpanded && (
-                  <div className="border-t px-4 py-3">
-                    <div className="mb-2 flex items-center justify-end">
-                      <BulkIncidentDialog
-                        phases={group.phases.map((p) => ({
-                          id: String(p.id),
-                          phaseName: String(p.phaseName),
-                        }))}
-                        agents={agentList}
-                        onSuccess={() => void utils.workflows.list.invalidate()}
+                        <div className="mt-3 flex items-center gap-3">
+                          <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                WORKFLOW_DUE_TONE_BAR_STYLES[dueTone],
+                              )}
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <span className="text-muted-foreground shrink-0 text-xs">
+                            {group.completedCount}/{group.totalCount} phase
+                            {group.totalCount !== 1 ? "s" : ""} done · Updated{" "}
+                            {formatDate(
+                              group.latestUpdate
+                                ? String(group.latestUpdate)
+                                : undefined,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight
+                        className={cn(
+                          "text-muted-foreground mt-1 size-4 shrink-0 transition-transform duration-200",
+                          isExpanded && "rotate-90",
+                        )}
                       />
                     </div>
-                    <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Phase</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Assigned</TableHead>
-                          <TableHead>Start</TableHead>
-                          <TableHead>Due</TableHead>
-                          <TableHead className="text-right">Updated</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {group.phases.map((phase) => (
-                          <TableRow
-                            key={phase.id}
-                            className="hover:bg-muted/50 cursor-pointer"
-                            onClick={() => setSelectedId(String(phase.id))}
-                          >
-                            <TableCell className="font-medium">
-                              {String(phase.phaseName)}
-                            </TableCell>
-                            <TableCell>
-                              <StatusBadge status={phase.status} />
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {phase.assignedName ? (
-                                <>
-                                  {phase.assignedName}
-                                  {phase.supportingAgentIds.length > 0 && (
-                                    <span className="ml-1 text-[10px] opacity-60">
-                                      +{phase.supportingAgentIds.length}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                                  disabled={selfAssignMutation.isPending}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selfAssignMutation.mutate({
-                                      id: String(phase.id),
-                                    });
-                                  }}
-                                >
-                                  <UserPlus className="size-3" /> Claim
-                                </Button>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
-                              {formatDate(
-                                phase.startDate
-                                  ? String(phase.startDate)
-                                  : undefined,
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-xs">
-                              {phase.dueDate ? (
-                                <span
-                                  className={
-                                    new Date(String(phase.dueDate)) <
-                                      new Date() &&
-                                    !(phase.status ?? "")
-                                      .toLowerCase()
-                                      .includes("complet")
-                                      ? "font-medium text-red-500"
-                                      : ""
-                                  }
-                                >
-                                  {formatDate(String(phase.dueDate))}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-right text-xs">
-                              {formatDate(
-                                phase.updatedAt
-                                  ? String(phase.updatedAt)
-                                  : undefined,
-                              )}
-                            </TableCell>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t px-4 py-3">
+                      <div className="mb-2 flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={group.phases.length === 0}
+                          onClick={() => {
+                            const representativePhase = group.phases[0];
+                            if (!representativePhase) return;
+                            setPhaseManagerGroup({
+                              workflowId: String(representativePhase.id),
+                              workflowType: group.workflowType as
+                                | "pfc"
+                                | "state_licenses"
+                                | "prelive_pipeline"
+                                | "provider_vesta_privileges",
+                              relatedId: String(group.relatedId),
+                              contextLabel: String(group.contextLabel),
+                            });
+                          }}
+                        >
+                          Manage Phases
+                        </Button>
+                        <BulkIncidentDialog
+                          phases={group.phases.map((p) => ({
+                            id: String(p.id),
+                            phaseName: String(p.phaseName),
+                          }))}
+                          agents={agentList}
+                          onSuccess={() => void utils.workflows.list.invalidate()}
+                        />
+                      </div>
+                      <Table className="[&_td]:py-3 [&_td:first-child]:pl-0 [&_td:last-child]:pr-0 [&_th]:py-3 [&_th:first-child]:pl-0 [&_th:last-child]:pr-0">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Phase</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Assigned</TableHead>
+                            <TableHead>Start</TableHead>
+                            <TableHead>Due</TableHead>
+                            <TableHead className="text-right">
+                              Updated
+                            </TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <WorkflowAutoAdvance
-            enabled={hasMoreGroups}
-            onAdvance={() => {
-              setVisibleCount((current) =>
-                Math.min(current + WORKFLOW_BATCH_SIZE, filteredWorkflows.length),
+                        </TableHeader>
+                        <TableBody>
+                          {expandedPhases.map((phase) => (
+                            <TableRow
+                              key={phase.id}
+                              className="hover:bg-muted/50 cursor-pointer"
+                              onClick={() => setSelectedId(String(phase.id))}
+                            >
+                              <TableCell className="font-medium">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {String(phase.phaseName)}
+                                  {Number(phase.incidentCount ?? 0) > 0 && (
+                                    <Badge className="h-5 gap-1 border-orange-500/25 bg-orange-500/15 px-1.5 py-0 text-[10px] text-orange-600">
+                                      <AlertTriangle className="size-2.5" />
+                                      {phase.incidentCount}
+                                    </Badge>
+                                  )}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={phase.status} />
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {phase.assignedName ? (
+                                  <>
+                                    {phase.assignedName}
+                                    {phase.supportingAgentIds.length > 0 && (
+                                      <span className="ml-1 text-[10px] opacity-60">
+                                        +{phase.supportingAgentIds.length}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 gap-1 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                    disabled={selfAssignMutation.isPending}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      selfAssignMutation.mutate({
+                                        id: String(phase.id),
+                                      });
+                                    }}
+                                  >
+                                    <UserPlus className="size-3" /> Claim
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {formatDate(
+                                  phase.startDate
+                                    ? String(phase.startDate)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">
+                                {phase.dueDate ? (
+                                  <span
+                                    className={
+                                      isOverdue(phase.dueDate, phase.status)
+                                        ? "font-medium text-red-500"
+                                        : ""
+                                    }
+                                  >
+                                    {formatDate(String(phase.dueDate))}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-right text-xs">
+                                {formatDate(
+                                  phase.updatedAt
+                                    ? String(phase.updatedAt)
+                                    : undefined,
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
               );
-            }}
-            resetKey={`${visibleCount}-${filteredWorkflows.length}`}
-            rootSelector=".workflows-scroll-viewport"
-          />
-        </div>
-      </VirtualScrollContainer>
+            })}
+            <WorkflowAutoAdvance
+              enabled={hasMoreGroups}
+              onAdvance={() => {
+                setVisibleCount((current) =>
+                  Math.min(
+                    current + WORKFLOW_BATCH_SIZE,
+                    filteredWorkflows.length,
+                  ),
+                );
+              }}
+              resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+              rootSelector=".workflows-scroll-viewport"
+            />
+          </div>
+        </VirtualScrollContainer>
       )}
 
       {false && filteredPhases.length > 0 && (
@@ -2921,11 +3580,7 @@ export default function WorkflowsClient() {
           <span>
             {
               filteredPhases.filter((w) => {
-                const status = (w.status ?? "").toLowerCase();
-                return (
-                  Boolean(status.includes("complet")) ||
-                  Boolean(status === "done")
-                );
+                return isCompletedStatus(w.status);
               }).length
             }{" "}
             completed
@@ -2943,11 +3598,7 @@ export default function WorkflowsClient() {
           <span>
             {
               filteredPhases.filter((w) => {
-                return Boolean(
-                  w.dueDate &&
-                  new Date(String(w.dueDate)) < new Date() &&
-                  !(w.status ?? "").toLowerCase().includes("complet"),
-                );
+                return Boolean(isOverdue(w.dueDate, w.status));
               }).length
             }{" "}
             overdue
@@ -2961,6 +3612,22 @@ export default function WorkflowsClient() {
           onClose={() => setSelectedId(null)}
           agentList={agentList}
           statusSuggestions={statusSuggestions}
+        />
+      )}
+
+      {phaseManagerGroup && (
+        <ManageWorkflowPhasesSheet
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setPhaseManagerGroup(null);
+          }}
+          workflowId={phaseManagerGroup.workflowId}
+          workflowType={phaseManagerGroup.workflowType}
+          relatedId={phaseManagerGroup.relatedId}
+          contextLabel={phaseManagerGroup.contextLabel}
+          agentList={agentList}
+          statusSuggestions={statusSuggestions}
+          onOpenPhase={setSelectedId}
         />
       )}
     </div>
