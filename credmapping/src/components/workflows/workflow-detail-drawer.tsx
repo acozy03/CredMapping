@@ -183,15 +183,6 @@ export function WorkflowDetailDrawer({
             </div>
           )}
         </div>
-
-        {/* Standalone incidents not matched to a displayed workflow */}
-        {incidents.length > 0 && (
-          <div className="px-4 pb-4">
-            <h4 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
-              All Incidents ({incidents.length})
-            </h4>
-          </div>
-        )}
       </SheetContent>
     </Sheet>
   );

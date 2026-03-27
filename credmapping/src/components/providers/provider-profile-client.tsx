@@ -2,6 +2,10 @@
 
 import * as React from "react";
 import { Activity, Building2, ShieldCheck } from "lucide-react";
+import {
+  EditProviderDialog,
+  DeleteProviderDialog,
+} from "~/components/providers/provider-actions";
 import { Badge } from "~/components/ui/badge";
 import { CollapsibleSection } from "~/components/ui/collapsible-section";
 import { Switch } from "~/components/ui/switch";
@@ -57,7 +61,21 @@ export interface NormalizedWorkflow {
   agentName: string | null;
 }
 
+export interface ProviderData {
+  id: string;
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+  degree: string | null;
+  email: string | null;
+  phone: string | null;
+  createdAt: Date | string | null;
+  updatedAt: Date | string | null;
+  notes: string | null;
+}
+
 interface ProviderProfileClientProps {
+  provider: ProviderData;
   providerId: string;
   licenseRows: LicenseRow[];
   privilegeRows: PrivilegeRow[];
@@ -115,9 +133,23 @@ const hasActiveWorkflows = (relatedId: string, workflows: NormalizedWorkflow[]) 
   });
 };
 
+const formatName = (provider: {
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+  degree: string | null;
+}) => {
+  const fullName = [provider.firstName, provider.middleName, provider.lastName]
+    .filter(Boolean)
+    .join(" ");
+  if (!fullName) return "Unnamed Provider";
+  return provider.degree ? `${fullName}, ${provider.degree}` : fullName;
+};
+
 /* ─── component ─── */
 
 export function ProviderProfileClient({
+  provider,
   providerId,
   licenseRows,
   privilegeRows,
@@ -177,17 +209,34 @@ export function ProviderProfileClient({
 
   return (
     <>
-      {/* In-progress toggle */}
-      <div className="flex items-center justify-end gap-2 px-1">
-        <Label htmlFor="active-toggle" className="text-xs text-muted-foreground cursor-pointer">
-          Show only in-progress
-        </Label>
-        <Switch
-          id="active-toggle"
-          checked={showOnlyActive}
-          onCheckedChange={setShowOnlyActive}
-        />
-      </div>
+      {/* ── Provider Header ── */}
+      <section className="rounded-xl border p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight">{formatName(provider)}</h1>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <p className="text-muted-foreground text-sm">{provider.email ?? "No email"} · {provider.phone ?? "No phone"}</p>
+              <span className="text-muted-foreground text-xs">Created {formatDate(provider.createdAt)}</span>
+              <span className="text-muted-foreground text-xs">· Updated {formatDate(provider.updatedAt)}</span>
+            </div>
+            {provider.notes && (
+              <p className="text-muted-foreground max-w-md truncate text-xs" title={provider.notes}>{provider.notes}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="active-toggle" className="text-xs text-muted-foreground cursor-pointer">
+              Show only in-progress
+            </Label>
+            <Switch
+              id="active-toggle"
+              checked={showOnlyActive}
+              onCheckedChange={setShowOnlyActive}
+            />
+            <EditProviderDialog provider={provider} />
+            <DeleteProviderDialog providerId={provider.id} providerName={formatName(provider)} />
+          </div>
+        </div>
+      </section>
 
       {/* ── Vesta privileges ── */}
       <CollapsibleSection
@@ -251,23 +300,7 @@ export function ProviderProfileClient({
         )}
       </CollapsibleSection>
 
-      {/* ── Metric cards (affected by toggle) ── */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="flex items-center gap-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2">
-          <p className="text-xs text-blue-700 dark:text-blue-300">State licenses</p>
-          <p className="text-lg font-semibold">{filteredLicenses.length}</p>
-        </div>
-        <div className="flex items-center gap-3 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
-          <p className="text-xs text-emerald-700 dark:text-emerald-300">Privilege records</p>
-          <p className="text-lg font-semibold">{filteredPrivileges.length}</p>
-        </div>
-        <div className="flex items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-700 dark:text-amber-300">Facility workflows</p>
-          <p className="text-lg font-semibold">{filteredCredentials.length}</p>
-        </div>
-      </div>
-
-      {/* ── Vesta privileges ── */}
+      {/* ── State licenses ── */}
       <CollapsibleSection
         title={<span className="flex items-center gap-2"><ShieldCheck className="size-4" /> State licenses</span>}
         badge={filteredLicenses.length}

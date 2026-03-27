@@ -1,9 +1,5 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import {
-  EditProviderDialog,
-  DeleteProviderDialog,
-} from "~/components/providers/provider-actions";
 import { ProviderProfileClient } from "~/components/providers/provider-profile-client";
 import { requireRequestAuthContext } from "~/server/auth/request-context";
 import { withUserDb } from "~/server/db";
@@ -23,19 +19,6 @@ const formatDate = (value: Date | string | null) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString();
-};
-
-const formatName = (provider: {
-  firstName: string | null;
-  middleName: string | null;
-  lastName: string | null;
-  degree: string | null;
-}) => {
-  const fullName = [provider.firstName, provider.middleName, provider.lastName]
-    .filter(Boolean)
-    .join(" ");
-  if (!fullName) return "Unnamed Provider";
-  return provider.degree ? `${fullName}, ${provider.degree}` : fullName;
 };
 
 const asDateInput = (value: Date | string | null) => {
@@ -182,29 +165,8 @@ export default async function ProviderProfilePage({
 
   return (
     <div className="space-y-4 pb-4">
-      <section className="rounded-xl border p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight">{formatName(provider)}</h1>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <p className="text-muted-foreground text-sm">{provider.email ?? "No email"} · {provider.phone ?? "No phone"}</p>
-              <span className="text-muted-foreground text-xs">Created {formatDate(provider.createdAt)}</span>
-              <span className="text-muted-foreground text-xs">· Updated {formatDate(provider.updatedAt)}</span>
-            </div>
-            {provider.notes && (
-              <p className="text-muted-foreground max-w-md truncate text-xs" title={provider.notes}>{provider.notes}</p>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <EditProviderDialog provider={provider} />
-            <DeleteProviderDialog providerId={provider.id} providerName={formatName(provider)} />
-          </div>
-        </div>
-
-
-      </section>
-
       <ProviderProfileClient
+        provider={provider}
         providerId={providerId}
         licenseRows={licenseRows}
         privilegeRows={privilegeRows}

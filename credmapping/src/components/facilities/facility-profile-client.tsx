@@ -4,11 +4,16 @@ import * as React from "react";
 import {
   Activity,
   Mail,
+  MapPin,
   Phone,
   Rocket,
   Stethoscope,
   User,
 } from "lucide-react";
+import {
+  EditFacilityDialog,
+  DeleteFacilityDialog,
+} from "~/components/facilities/facility-actions";
 import { Badge } from "~/components/ui/badge";
 import { CollapsibleSection } from "~/components/ui/collapsible-section";
 import { Switch } from "~/components/ui/switch";
@@ -73,7 +78,23 @@ export interface NormalizedWorkflow {
   agentName: string | null;
 }
 
+export interface FacilityData {
+  id: string;
+  name: string | null;
+  state: string | null;
+  proxy: string | null;
+  status: "Active" | "Inactive" | "In Progress" | null;
+  yearlyVolume: number | null;
+  modalities: string[] | null;
+  tatSla: string | null;
+  createdAt: Date | string | null;
+  updatedAt: Date | string | null;
+  email: string | null;
+  address: string | null;
+}
+
 interface FacilityProfileClientProps {
+  facility: FacilityData;
   facilityId: string;
   contactRows: ContactRow[];
   preliveRows: PreliveRow[];
@@ -140,9 +161,21 @@ const hasActiveWorkflows = (relatedId: string, workflows: NormalizedWorkflow[]) 
   });
 };
 
+const getStatusTone = (status: string | null) => {
+  const normalized = status?.toLowerCase() ?? "";
+  if (normalized === "inactive") {
+    return "border-zinc-500/60 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
+  }
+  if (normalized === "in progress") {
+    return "border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+  }
+  return "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+};
+
 /* ─── component ─── */
 
 export function FacilityProfileClient({
+  facility,
   facilityId,
   contactRows,
   preliveRows,
@@ -196,37 +229,66 @@ export function FacilityProfileClient({
 
   return (
     <>
-      {/* In-progress toggle */}
-      <div className="flex items-center justify-end gap-2 px-1">
-        <Label htmlFor="active-toggle-f" className="text-xs text-muted-foreground cursor-pointer">
-          Show only in-progress
-        </Label>
-        <Switch
-          id="active-toggle-f"
-          checked={showOnlyActive}
-          onCheckedChange={setShowOnlyActive}
-        />
-      </div>
+      {/* ── Facility Header ── */}
+      <section className="rounded-xl border p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {facility.name ?? "Unnamed Facility"}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+                {facility.state && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="size-3.5" /> {facility.state}
+                  </span>
+                )}
+                {facility.email && (
+                  <a className="flex items-center gap-1 hover:underline" href={`mailto:${facility.email}`}>
+                    <Mail className="size-3.5" /> {facility.email}
+                  </a>
+                )}
+                {facility.address && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="size-3.5" /> {facility.address}
+                  </span>
+                )}
+              </div>
+              <span className="text-muted-foreground text-xs">Created {formatDate(facility.createdAt)}</span>
+              <span className="text-muted-foreground text-xs">· Updated {formatDate(facility.updatedAt)}</span>
+            </div>
+            <Badge className={getStatusTone(facility.status)} variant="outline">
+              {facility.status ?? "Unknown"}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="active-toggle-f" className="text-xs text-muted-foreground cursor-pointer">
+              Show only in-progress
+            </Label>
+            <Switch
+              id="active-toggle-f"
+              checked={showOnlyActive}
+              onCheckedChange={setShowOnlyActive}
+            />
+            <EditFacilityDialog facility={facility} />
+            <DeleteFacilityDialog
+              facilityId={facility.id}
+              facilityName={facility.name ?? "Unnamed"}
+            />
+          </div>
+        </div>
 
-      {/* ── Metric cards (affected by toggle) ── */}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <div className="flex items-center gap-3 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
-          <p className="text-xs text-emerald-700 dark:text-emerald-300">Contacts</p>
-          <p className="text-lg font-semibold">{contactRows.length}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {facility.proxy && <span>Proxy: {facility.proxy}</span>}
+          {facility.yearlyVolume !== null && (
+            <span>Volume: {facility.yearlyVolume?.toLocaleString()}</span>
+          )}
+          {facility.tatSla && <span>TAT/SLA: {facility.tatSla}</span>}
+          {facility.modalities && facility.modalities.length > 0 && (
+            <span>Modalities: {facility.modalities.join(", ")}</span>
+          )}
         </div>
-        <div className="flex items-center gap-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2">
-          <p className="text-xs text-blue-700 dark:text-blue-300">Credentialed providers</p>
-          <p className="text-lg font-semibold">{filteredCredentials.length}</p>
-        </div>
-        <div className="flex items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-700 dark:text-amber-300">Workflow phases</p>
-          <p className="text-lg font-semibold">{workflows.length}</p>
-        </div>
-        <div className="flex items-center gap-3 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2">
-          <p className="text-xs text-violet-700 dark:text-violet-300">Pre-live records</p>
-          <p className="text-lg font-semibold">{filteredPrelive.length}</p>
-        </div>
-      </div>
+      </section>
 
       {/* ── Facility contacts ── */}
       <CollapsibleSection

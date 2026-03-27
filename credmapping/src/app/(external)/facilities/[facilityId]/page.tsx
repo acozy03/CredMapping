@@ -1,16 +1,7 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
-import {
-  Mail,
-  MapPin,
-} from "lucide-react";
 import { notFound } from "next/navigation";
 
-import {
-  DeleteFacilityDialog,
-  EditFacilityDialog,
-} from "~/components/facilities/facility-actions";
 import { FacilityProfileClient } from "~/components/facilities/facility-profile-client";
-import { Badge } from "~/components/ui/badge";
 import { requireRequestAuthContext } from "~/server/auth/request-context";
 import { withUserDb } from "~/server/db";
 import {
@@ -36,17 +27,6 @@ const asDateInput = (value: Date | string | null) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
-};
-
-const getStatusTone = (status: string | null) => {
-  const normalized = status?.toLowerCase() ?? "";
-  if (normalized === "inactive") {
-    return "border-zinc-500/60 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
-  }
-  if (normalized === "in progress") {
-    return "border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300";
-  }
-  return "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
 };
 
 export default async function FacilityProfilePage({
@@ -177,61 +157,8 @@ export default async function FacilityProfilePage({
 
   return (
     <div className="space-y-4 pb-4">
-      <section className="rounded-xl border p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {facility.name ?? "Unnamed Facility"}
-            </h1>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-              <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
-                {facility.state && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="size-3.5" /> {facility.state}
-                  </span>
-                )}
-                {facility.email && (
-                  <a className="flex items-center gap-1 hover:underline" href={`mailto:${facility.email}`}>
-                    <Mail className="size-3.5" /> {facility.email}
-                  </a>
-                )}
-                {facility.address && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="size-3.5" /> {facility.address}
-                  </span>
-                )}
-              </div>
-              <span className="text-muted-foreground text-xs">Created {formatDate(facility.createdAt)}</span>
-              <span className="text-muted-foreground text-xs">· Updated {formatDate(facility.updatedAt)}</span>
-            </div>
-            <Badge className={getStatusTone(facility.status)} variant="outline">
-              {facility.status ?? "Unknown"}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <EditFacilityDialog facility={facility} />
-            <DeleteFacilityDialog
-              facilityId={facility.id}
-              facilityName={facility.name ?? "Unnamed"}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {facility.proxy && <span>Proxy: {facility.proxy}</span>}
-          {facility.yearlyVolume !== null && (
-            <span>Volume: {facility.yearlyVolume?.toLocaleString()}</span>
-          )}
-          {facility.tatSla && <span>TAT/SLA: {facility.tatSla}</span>}
-          {facility.modalities && facility.modalities.length > 0 && (
-            <span>Modalities: {facility.modalities.join(", ")}</span>
-          )}
-        </div>
-
-
-      </section>
-
       <FacilityProfileClient
+        facility={facility}
         facilityId={facilityId}
         contactRows={contactRows}
         preliveRows={preliveRows}
