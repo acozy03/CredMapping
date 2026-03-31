@@ -26,6 +26,15 @@ import { env } from "~/env";
 const toNull = (v: string | undefined | null) =>
   v === undefined || v === null || v.trim() === "" ? null : v.trim();
 
+const compareWorkflowPhaseOrderSafe = (
+  aPhaseNumber: number | null,
+  bPhaseNumber: number | null,
+) => {
+  const a = typeof aPhaseNumber === "number" ? aPhaseNumber : Number.MAX_SAFE_INTEGER;
+  const b = typeof bPhaseNumber === "number" ? bPhaseNumber : Number.MAX_SAFE_INTEGER;
+  return a - b;
+};
+
 /** Fire-and-forget POST to the n8n incident escalation webhook. */
 async function notifyIncidentWebhook(incidentIds: string[]) {
   const url = env.N8N_INCIDENT_WEBHOOK_URL;
@@ -237,6 +246,37 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
+      const groupWhere = conditions.length ? and(...conditions) : undefined;
+
+      const pagedGroups = await ctx.db
+        .select({
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          latestUpdatedAt:
+            sql<Date | null>`max(${workflowPhases.updatedAt})`.as("latest_updated_at"),
+        })
+        .from(workflowPhases)
+        .where(groupWhere)
+        .groupBy(workflowPhases.workflowType, workflowPhases.relatedId)
+        .orderBy(
+          desc(sql`max(${workflowPhases.updatedAt})`),
+          asc(workflowPhases.workflowType),
+          asc(workflowPhases.relatedId),
+        )
+        .limit(input.limit)
+        .offset(input.offset);
+
+      if (pagedGroups.length === 0) {
+        return [];
+      }
+
+      const groupFilters = pagedGroups.map((group) =>
+        and(
+          eq(workflowPhases.workflowType, group.workflowType),
+          eq(workflowPhases.relatedId, group.relatedId),
+        ),
+      );
+
       const rows = await ctx.db
         .select({
           id: workflowPhases.id,
@@ -262,22 +302,46 @@ export const workflowsRouter = createTRPCRouter({
         })
         .from(workflowPhases)
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(workflowPhases.updatedAt))
-        .limit(input.limit)
-        .offset(input.offset);
+        .where(or(...groupFilters))
+        .orderBy(
+          asc(workflowPhases.workflowType),
+          asc(workflowPhases.relatedId),
+          asc(workflowPhases.phaseNumber),
+          asc(workflowPhases.createdAt),
+        );
+
+      const groupOrder = new Map(
+        pagedGroups.map((group, index) => [
+          `${group.workflowType}:${group.relatedId}`,
+          index,
+        ]),
+      );
+
+      const sortedRows = [...rows].sort((a, b) => {
+        const aGroupIndex =
+          groupOrder.get(`${a.workflowType}:${a.relatedId}`) ??
+          Number.POSITIVE_INFINITY;
+        const bGroupIndex =
+          groupOrder.get(`${b.workflowType}:${b.relatedId}`) ??
+          Number.POSITIVE_INFINITY;
+        if (aGroupIndex !== bGroupIndex) {
+          return aGroupIndex - bGroupIndex;
+        }
+
+        return compareWorkflowPhaseOrderSafe(a.phaseNumber, b.phaseNumber);
+      });
 
       // Enrich with context names for the related entity
-      const pfcIds = rows
+      const pfcIds = sortedRows
         .filter((r) => r.workflowType === "pfc")
         .map((r) => r.relatedId);
-      const licenseIds = rows
+      const licenseIds = sortedRows
         .filter((r) => r.workflowType === "state_licenses")
         .map((r) => r.relatedId);
-      const privIds = rows
+      const privIds = sortedRows
         .filter((r) => r.workflowType === "provider_vesta_privileges")
         .map((r) => r.relatedId);
-      const preliveIds = rows
+      const preliveIds = sortedRows
         .filter((r) => r.workflowType === "prelive_pipeline")
         .map((r) => r.relatedId);
 
@@ -391,7 +455,7 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      return rows.map((row) => {
+      return sortedRows.map((row) => {
         const pfc = pfcMap.get(row.relatedId);
         const assignedName =
           row.assignedFirstName || row.assignedLastName

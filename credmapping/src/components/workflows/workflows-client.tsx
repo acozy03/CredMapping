@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
+import { type RouterOutputs } from "~/trpc/react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -108,6 +109,8 @@ type WorkflowPhaseDraft = WorkflowPhaseInput & {
   clientKey: string;
 };
 
+type WorkflowListRow = RouterOutputs["workflows"]["list"][number];
+
 /* ─── Helpers ──────────────────────────────────────────────── */
 
 /** Fallback suggestions when no statuses exist in the DB yet */
@@ -138,8 +141,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_BATCH_SIZE = 8;
-const WORKFLOW_FETCH_LIMIT = 1000;
+const WORKFLOW_GROUP_PAGE_SIZE = 25;
 
 const EMPTY_PHASES: never[] = [];
 
@@ -3067,7 +3069,9 @@ export default function WorkflowsClient() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
-  const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
+  const [groupOffset, setGroupOffset] = useState(0);
+  const [workflowRows, setWorkflowRows] = useState<WorkflowListRow[]>([]);
+  const [hasMoreGroupPages, setHasMoreGroupPages] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [phaseManagerGroup, setPhaseManagerGroup] = useState<{
@@ -3082,29 +3086,71 @@ export default function WorkflowsClient() {
   } | null>(null);
   const backendSearch = debouncedSearch.trim() || undefined;
 
+  const listInput = {
+    workflowType: workflowType as
+      | "all"
+      | "pfc"
+      | "state_licenses"
+      | "prelive_pipeline"
+      | "provider_vesta_privileges",
+    assignedToMe: agentFilter === "__me__",
+    assignedToAgent:
+      agentFilter !== "all" && agentFilter !== "__me__"
+        ? agentFilter
+        : undefined,
+    search: backendSearch,
+    limit: WORKFLOW_GROUP_PAGE_SIZE,
+    offset: groupOffset,
+  };
+
   const {
-    data: workflows = [],
+    data: workflowsPage = [],
     isLoading,
     isFetching,
   } = api.workflows.list.useQuery(
+    listInput,
     {
-      workflowType: workflowType as
-        | "all"
-        | "pfc"
-        | "state_licenses"
-        | "prelive_pipeline"
-        | "provider_vesta_privileges",
-      assignedToMe: agentFilter === "__me__",
-      assignedToAgent:
-        agentFilter !== "all" && agentFilter !== "__me__"
-          ? agentFilter
-          : undefined,
-      search: backendSearch,
-      limit: WORKFLOW_FETCH_LIMIT,
-      offset: 0,
+      refetchOnWindowFocus: false,
+      placeholderData: (previous) => previous,
     },
-    { refetchOnWindowFocus: false },
   );
+
+  useEffect(() => {
+    setGroupOffset(0);
+    setWorkflowRows([]);
+    setHasMoreGroupPages(true);
+  }, [workflowType, agentFilter, debouncedSearch]);
+
+  useEffect(() => {
+    const groupCountOnPage = new Set(
+      workflowsPage.map((row) => `${row.workflowType}:${row.relatedId}`),
+    ).size;
+
+    setHasMoreGroupPages(groupCountOnPage === WORKFLOW_GROUP_PAGE_SIZE);
+
+    if (groupOffset === 0) {
+      setWorkflowRows(workflowsPage);
+      return;
+    }
+
+    setWorkflowRows((existingRows) => {
+      const existingById = new Map(existingRows.map((row) => [row.id, row]));
+
+      for (const row of workflowsPage) {
+        existingById.set(row.id, row);
+      }
+
+      const seen = new Set(existingRows.map((row) => row.id));
+      const mergedExistingRows = existingRows
+        .map((row) => existingById.get(row.id))
+        .filter((row): row is (typeof existingRows)[number] => Boolean(row));
+      const appendedRows = workflowsPage.filter((row) => !seen.has(row.id));
+
+      return [...mergedExistingRows, ...appendedRows];
+    });
+  }, [groupOffset, workflowsPage]);
+
+  const workflows = workflowRows ?? EMPTY_PHASES;
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
   const { data: dbStatuses = [] } = api.workflows.distinctStatuses.useQuery({
@@ -3241,22 +3287,20 @@ export default function WorkflowsClient() {
   );
 
   useEffect(() => {
-    setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, debouncedSearch, sortBy]);
-
-  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedSearch(search);
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const visibleGroups = useMemo(
-    () => filteredWorkflows.slice(0, visibleCount),
-    [filteredWorkflows, visibleCount],
-  );
+  const visibleGroups = filteredWorkflows;
 
-  const hasMoreGroups = visibleGroups.length < filteredWorkflows.length;
+  const hasMoreGroups = hasMoreGroupPages;
+
+  const handleLoadMoreGroups = () => {
+    if (!hasMoreGroupPages || isFetching) return;
+    setGroupOffset((currentOffset) => currentOffset + WORKFLOW_GROUP_PAGE_SIZE);
+  };
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -3319,6 +3363,9 @@ export default function WorkflowsClient() {
         <GroupedWorkflowsView
           rows={filteredPhases}
           sortBy={sortBy}
+          hasMoreGroups={hasMoreGroups}
+          isLoadingMoreGroups={isFetching && groupOffset > 0}
+          onLoadMoreGroups={handleLoadMoreGroups}
           claimPending={selfAssignMutation.isPending}
           onOpenWorkflow={setSelectedId}
           onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
@@ -3560,15 +3607,8 @@ export default function WorkflowsClient() {
             })}
             <WorkflowAutoAdvance
               enabled={hasMoreGroups}
-              onAdvance={() => {
-                setVisibleCount((current) =>
-                  Math.min(
-                    current + WORKFLOW_BATCH_SIZE,
-                    filteredWorkflows.length,
-                  ),
-                );
-              }}
-              resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+              onAdvance={handleLoadMoreGroups}
+              resetKey={`${groupOffset}-${filteredWorkflows.length}`}
               rootSelector=".workflows-scroll-viewport"
             />
           </div>
