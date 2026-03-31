@@ -81,6 +81,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
+import { INCIDENT_CATEGORIES, type IncidentCategory } from "~/components/workflows/workflow-utils";
 import { Label } from "~/components/ui/label";
 import { VirtualScrollContainer } from "~/components/ui/virtual-scroll-container";
 
@@ -142,6 +143,13 @@ const WORKFLOW_BATCH_SIZE = 8;
 const WORKFLOW_FETCH_LIMIT = 1000;
 
 const EMPTY_PHASES: never[] = [];
+
+function toIncidentCategoryOrEmpty(value: string | null | undefined): IncidentCategory | "" {
+  if (!value) return "";
+  return INCIDENT_CATEGORIES.includes(value as IncidentCategory)
+    ? (value as IncidentCategory)
+    : "";
+}
 
 type WorkflowViewMode = "list" | "grouped";
 
@@ -496,7 +504,9 @@ function IncidentDialog({
   const isEdit = !!incident;
   const [open, setOpen] = useState(false);
 
-  const [subcategory, setSubcategory] = useState(incident?.subcategory ?? "");
+  const [subcategory, setSubcategory] = useState<IncidentCategory | "">(
+    toIncidentCategoryOrEmpty(incident?.subcategory),
+  );
   const [critical, setCritical] = useState(incident?.critical ?? false);
   const [dateIdentified, setDateIdentified] = useState(
     incident?.dateIdentified ?? "",
@@ -547,7 +557,7 @@ function IncidentDialog({
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   function reset() {
-    setSubcategory(incident?.subcategory ?? "");
+    setSubcategory(toIncidentCategoryOrEmpty(incident?.subcategory));
     setCritical(incident?.critical ?? false);
     setDateIdentified(incident?.dateIdentified ?? "");
     setDescription(incident?.incidentDescription ?? "");
@@ -563,7 +573,7 @@ function IncidentDialog({
   }
 
   function handleSubmit() {
-    if (!subcategory.trim()) {
+    if (!subcategory) {
       toast.error("Subcategory is required.");
       return;
     }
@@ -575,7 +585,7 @@ function IncidentDialog({
     if (isEdit && incident) {
       updateMutation.mutate({
         id: incident.id,
-        subcategory: subcategory.trim(),
+        subcategory,
         critical,
         resolutionDate: resolutionDate || undefined,
         finalResolution: finalResolution || undefined,
@@ -592,7 +602,7 @@ function IncidentDialog({
       }
       createMutation.mutate({
         workflowId,
-        subcategory: subcategory.trim(),
+        subcategory,
         critical,
         dateIdentified,
         incidentDescription: description || undefined,
@@ -633,11 +643,23 @@ function IncidentDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 space-y-1.5">
               <Label>Subcategory *</Label>
-              <Input
+              <Select
                 value={subcategory}
-                onChange={(e) => setSubcategory(e.target.value)}
-                placeholder="e.g. Missing Documentation"
-              />
+                onValueChange={(value) =>
+                  setSubcategory(value as IncidentCategory)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INCIDENT_CATEGORIES.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Date Identified *</Label>
@@ -844,7 +866,7 @@ function DeleteIncidentDialog({
 
 type BulkIncidentEntry = {
   clientKey: string;
-  subcategory: string;
+  subcategory: IncidentCategory | "";
   critical: boolean;
   dateIdentified: string;
   description: string;
@@ -991,7 +1013,7 @@ function BulkIncidentDialog({
   }
 
   function validateIncident(incident: BulkIncidentEntry): string | null {
-    if (!incident.subcategory.trim()) return "Subcategory is required.";
+    if (!incident.subcategory) return "Subcategory is required.";
     if (!incident.dateIdentified) return "Date identified is required.";
     if (!incident.escalatedTo) return "Escalated To is required.";
     return null;
@@ -1023,7 +1045,7 @@ function BulkIncidentDialog({
       incidents: phaseGroups.flatMap((group) =>
         group.incidents.map((incident) => ({
           workflowId: group.phaseId,
-          subcategory: incident.subcategory.trim(),
+          subcategory: incident.subcategory as IncidentCategory,
           critical: incident.critical,
           dateIdentified: incident.dateIdentified,
           incidentDescription: incident.description || undefined,
@@ -1174,15 +1196,25 @@ function BulkIncidentDialog({
                             <div className="grid grid-cols-2 gap-3">
                               <div className="col-span-2 space-y-1.5">
                                 <Label>Subcategory *</Label>
-                                <Input
+                                <Select
                                   value={incident.subcategory}
-                                  onChange={(e) =>
+                                  onValueChange={(value) =>
                                     updateIncident(group.phaseId, incident.clientKey, {
-                                      subcategory: e.target.value,
+                                      subcategory: value as IncidentCategory,
                                     })
                                   }
-                                  placeholder="e.g. Missing Documentation"
-                                />
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select a category" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {INCIDENT_CATEGORIES.map((category) => (
+                                      <SelectItem key={category} value={category}>
+                                        {category}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </div>
                               <div className="space-y-1.5">
                                 <Label>Date Identified *</Label>

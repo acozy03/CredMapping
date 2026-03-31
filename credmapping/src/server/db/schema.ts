@@ -14,6 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { authenticatedRole } from "drizzle-orm/supabase";
+import { INCIDENT_CATEGORIES } from "~/components/workflows/workflow-utils";
 
 export const relatedTypeEnum = pgEnum("facility_or_provider", ["facility", "provider"]);
 export const initialOrRenewalEnum = pgEnum("initial_or_renewal", ["initial", "renewal"]);
@@ -26,6 +27,7 @@ export const facilityStatusEnum = pgEnum("status", ["Active", "Inactive", "In Pr
 export const followUpStatus = pgEnum("follow_up_status", ["Completed", "Pending Response", "Not Completed"]);
 export const psvStatus = pgEnum("psv_status", ["Not Started", "Requested", "Received", "Inactive Rad", "Closed", "Not Affiliated", "Old Request", "Hold"]);
 export const psvType = pgEnum("psv_type", ["Education", "Work", "Hospital", "Peer", "COI/Loss Run", "Claims Document", "Board Actions", "Locums/Work", "Vesta Practice Location", "Vesta Hospital", "Work COI", "OPPE"]);
+export const incidentCategoryEnum = pgEnum("incident_category", INCIDENT_CATEGORIES);
 
 const isAdminOrSuperAdmin = sql`exists (
   select 1
@@ -208,7 +210,7 @@ export const incidentLogs = pgTable("incident_logs", {
   escalatedTo: uuid("escalated_to").references(() => agents.id).notNull(), 
   dateIdentified: date("date_identified").notNull(),
   resolutionDate: date("resolution_date"), 
-  subcategory: text("subcategory").notNull(),
+  subcategory: incidentCategoryEnum("subcategory").notNull(),
   rootCauseIdentified: boolean("root_cause_identified"),
   rootCauseDescription: text("root_cause_description"), 
   critical: boolean("critical").notNull(), 

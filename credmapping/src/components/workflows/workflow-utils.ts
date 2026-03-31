@@ -4,6 +4,23 @@ export type WorkflowSortMode =
   | "date_started_desc"
   | "date_started_asc";
 
+export const INCIDENT_CATEGORIES = [
+  "Personal Info",
+  "Education & Training",
+  "Practice / Employer",
+  "Facility Affiliations",
+  "Work History",
+  "Peer References",
+  "Licensure",
+  "Certifications",
+  "Medical Malpractice",
+  "Health Info",
+  "Event Log",
+  "Documents",
+] as const;
+
+export type IncidentCategory = (typeof INCIDENT_CATEGORIES)[number];
+
 export const WORKFLOW_TYPE_LABELS: Record<string, string> = {
   pfc: "PFC",
   state_licenses: "State Licenses",
