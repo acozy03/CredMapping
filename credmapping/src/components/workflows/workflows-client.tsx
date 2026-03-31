@@ -3134,9 +3134,19 @@ export default function WorkflowsClient() {
     }
 
     setWorkflowRows((existingRows) => {
+      const existingById = new Map(existingRows.map((row) => [row.id, row]));
+
+      for (const row of workflowsPage) {
+        existingById.set(row.id, row);
+      }
+
       const seen = new Set(existingRows.map((row) => row.id));
-      const nextRows = workflowsPage.filter((row) => !seen.has(row.id));
-      return [...existingRows, ...nextRows];
+      const mergedExistingRows = existingRows
+        .map((row) => existingById.get(row.id))
+        .filter((row): row is (typeof existingRows)[number] => Boolean(row));
+      const appendedRows = workflowsPage.filter((row) => !seen.has(row.id));
+
+      return [...mergedExistingRows, ...appendedRows];
     });
   }, [groupOffset, workflowsPage]);
 
