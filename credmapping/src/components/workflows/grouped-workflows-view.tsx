@@ -19,6 +19,7 @@ import {
 } from "~/components/ui/accordion";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 import {
   Select,
   SelectContent,
@@ -67,6 +68,9 @@ type RelatedWorkflowGroup = {
 type GroupedWorkflowsViewProps = {
   rows: WorkflowListRow[];
   sortBy: WorkflowSortMode;
+  hasMoreGroups: boolean;
+  isLoadingMoreGroups: boolean;
+  onLoadMoreGroups: () => void;
   onOpenWorkflow: (id: string) => void;
   onClaimWorkflow: (id: string) => void;
   onManagePhases: (input: {
@@ -104,23 +108,6 @@ function isManagePhasesWorkflowType(
     "prelive_pipeline",
     "provider_vesta_privileges",
   ].includes(workflowType);
-}
-
-function sortRows(rows: WorkflowListRow[], sortBy: WorkflowSortMode) {
-  const getTimestamp = (value: string | Date | null | undefined) =>
-    value ? new Date(value).getTime() : 0;
-
-  return [...rows].sort((a, b) => {
-    const aStarted = getTimestamp(a.startDate);
-    const bStarted = getTimestamp(b.startDate);
-    const aAssigned = getTimestamp(a.createdAt);
-    const bAssigned = getTimestamp(b.createdAt);
-
-    if (sortBy === "date_started_asc") return aStarted - bStarted;
-    if (sortBy === "date_started_desc") return bStarted - aStarted;
-    if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
-    return bAssigned - aAssigned;
-  });
 }
 
 function getRelatedWorkflowLabel(row: WorkflowListRow) {
@@ -214,12 +201,18 @@ function GroupedWorkflowsSidebar({
   onSelect,
   search,
   onSearchChange,
+  hasMoreGroups,
+  isLoadingMoreGroups,
+  onLoadMoreGroups,
 }: {
   groups: WorkflowGroup[];
   selectedGroup: string | null;
   onSelect: (key: string) => void;
   search: string;
   onSearchChange: (value: string) => void;
+  hasMoreGroups: boolean;
+  isLoadingMoreGroups: boolean;
+  onLoadMoreGroups: () => void;
 }) {
   return (
     <div className="bg-card flex h-[calc(83vh)] flex-col overflow-hidden rounded-lg border">
@@ -234,34 +227,47 @@ function GroupedWorkflowsSidebar({
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {groups.length === 0 ? (
-          <div className="text-muted-foreground p-4 text-sm">
-            No groups match your search.
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {groups.map((group) => (
-              <button
-                type="button"
-                key={group.key}
-                onClick={() => onSelect(group.key)}
-                className={cn(
-                  "hover:bg-muted/60 w-full rounded-md border px-3 py-2 text-left transition-colors",
-                  selectedGroup === group.key
-                    ? "border-primary/40 bg-primary/10"
-                    : "border-transparent",
-                )}
-              >
-                <p className="truncate text-sm font-medium">{group.label}</p>
-                <p className="text-muted-foreground truncate text-xs">
-                  {group.subtitle}
-                </p>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ScrollIndicatorContainer className="min-h-0 flex-1">
+        <div className="space-y-2 p-2">
+          {groups.length === 0 ? (
+            <div className="text-muted-foreground p-4 text-sm">
+              No groups match your search.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {groups.map((group) => (
+                <button
+                  type="button"
+                  key={group.key}
+                  onClick={() => onSelect(group.key)}
+                  className={cn(
+                    "hover:bg-muted/60 w-full rounded-md border px-3 py-2 text-left transition-colors",
+                    selectedGroup === group.key
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-transparent",
+                  )}
+                >
+                  <p className="truncate text-sm font-medium">{group.label}</p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {group.subtitle}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+          {hasMoreGroups && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={onLoadMoreGroups}
+              disabled={isLoadingMoreGroups}
+            >
+              {isLoadingMoreGroups ? "Loading groups..." : "Load more groups"}
+            </Button>
+          )}
+        </div>
+      </ScrollIndicatorContainer>
     </div>
   );
 }
@@ -559,6 +565,9 @@ function GroupedWorkflowsDetailPane({
 export function GroupedWorkflowsView({
   rows,
   sortBy,
+  hasMoreGroups,
+  isLoadingMoreGroups,
+  onLoadMoreGroups,
   onOpenWorkflow,
   onClaimWorkflow,
   onManagePhases,
@@ -722,6 +731,9 @@ export function GroupedWorkflowsView({
             onSelect={setSelectedGroupKey}
             search={groupSearch}
             onSearchChange={setGroupSearch}
+            hasMoreGroups={hasMoreGroups}
+            isLoadingMoreGroups={isLoadingMoreGroups}
+            onLoadMoreGroups={onLoadMoreGroups}
           />
           <GroupedWorkflowsDetailPane
             group={selectedGroup}
