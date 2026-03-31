@@ -649,7 +649,15 @@ export function GroupedWorkflowsView({
             : `${loadedCount} workflow${loadedCount === 1 ? "" : "s"}`,
           isIncomplete,
         };
-      }).sort((a, b) => a.label.localeCompare(b.label));
+      }).sort((a, b) => {
+        const aIsUnassigned = a.key.includes("unassigned");
+        const bIsUnassigned = b.key.includes("unassigned");
+
+        if (aIsUnassigned && !bIsUnassigned) return 1;
+        if (!aIsUnassigned && bIsUnassigned) return -1;
+
+        return a.label.localeCompare(b.label);
+      });
     }, [groupBy, rows]);
   const visibleGroups = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
