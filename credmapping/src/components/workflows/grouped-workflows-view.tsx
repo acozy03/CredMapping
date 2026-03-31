@@ -53,6 +53,8 @@ type WorkflowGroup = {
   key: string;
   label: string;
   subtitle: string;
+  totalInDb: number;
+  isIncomplete: boolean;
   rows: WorkflowListRow[];
 };
 
@@ -137,7 +139,7 @@ function getRelatedWorkflowLabel(row: WorkflowListRow) {
 }
 
 function getRelatedWorkflowSubtitle(group: RelatedWorkflowGroup) {
-  const workflowWord = group.rows.length === 1 ? "workflow" : "workflows";
+  const workflowWord = group.rows.length === 1 ? "phase" : "phases";
   return `${group.rows.length} ${workflowWord}`;
 }
 
@@ -236,22 +238,30 @@ function GroupedWorkflowsSidebar({
           ) : (
             <div className="space-y-1">
               {groups.map((group) => (
-                <button
-                  type="button"
-                  key={group.key}
-                  onClick={() => onSelect(group.key)}
-                  className={cn(
-                    "hover:bg-muted/60 w-full rounded-md border px-3 py-2 text-left transition-colors",
-                    selectedGroup === group.key
-                      ? "border-primary/40 bg-primary/10"
-                      : "border-transparent",
-                  )}
-                >
-                  <p className="truncate text-sm font-medium">{group.label}</p>
-                  <p className="text-muted-foreground truncate text-xs">
+               <button
+                type="button"
+                key={group.key}
+                onClick={() => onSelect(group.key)}
+                className={cn(
+                  "hover:bg-muted/60 w-full rounded-md border px-3 py-2 text-left transition-colors",
+                  selectedGroup === group.key
+                    ? "border-primary/40 bg-primary/10"
+                    : "border-transparent",
+                )}
+              >
+                <p className="truncate text-sm font-medium">{group.label}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className={cn(
+                    "truncate text-xs",
+                    group.isIncomplete ? "text-muted-foreground font-medium" : "text-muted-foreground"
+                  )}>
                     {group.subtitle}
                   </p>
-                </button>
+                  {group.isIncomplete && (
+                    <AlertTriangle className="size-3 text-muted-foreground shrink-0" />
+                  )}
+                </div>
+              </button>
               ))}
             </div>
           )}
@@ -611,6 +621,8 @@ export function GroupedWorkflowsView({
               }
             : facilityFallback;
 
+      const totalInDb = row.totalGroupsForOwner ?? 0;
+
       const existing = map.get(groupMeta.key);
       if (existing) {
         existing.rows.push(row);
@@ -620,18 +632,25 @@ export function GroupedWorkflowsView({
           label: groupMeta.label,
           subtitle: groupMeta.subtitle,
           rows: [row],
+          totalInDb,
+          isIncomplete: totalInDb > 1,
         });
       }
     }
 
-    return Array.from(map.values())
-      .map((group) => ({
-        ...group,
-        subtitle: `${group.rows.length} workflow${group.rows.length === 1 ? "" : "s"}`,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [groupBy, rows]);
+    return Array.from(map.values()).map((group) => {
+        const loadedCount = new Set(group.rows.map(r => `${r.workflowType}:${r.relatedId}`)).size;
+        const isIncomplete = group.totalInDb > loadedCount;
 
+        return {
+          ...group,
+          subtitle: isIncomplete 
+            ? `${loadedCount} of ${group.totalInDb} workflows loaded` 
+            : `${loadedCount} workflow${loadedCount === 1 ? "" : "s"}`,
+          isIncomplete,
+        };
+      }).sort((a, b) => a.label.localeCompare(b.label));
+    }, [groupBy, rows]);
   const visibleGroups = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
     if (!q) return groups;

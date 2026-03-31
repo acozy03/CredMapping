@@ -3116,39 +3116,54 @@ export default function WorkflowsClient() {
   );
 
   useEffect(() => {
-    setGroupOffset(0);
-    setWorkflowRows([]);
+    if (groupOffset !== 0) {
+      setGroupOffset(0);
+    }
     setHasMoreGroupPages(true);
   }, [workflowType, agentFilter, debouncedSearch]);
 
   useEffect(() => {
+    if (isFetching && workflowsPage.length === 0) return;
+
     const groupCountOnPage = new Set(
       workflowsPage.map((row) => `${row.workflowType}:${row.relatedId}`),
     ).size;
 
-    setHasMoreGroupPages(groupCountOnPage === WORKFLOW_GROUP_PAGE_SIZE);
+    const nextHasMore = groupCountOnPage === WORKFLOW_GROUP_PAGE_SIZE;
+    setHasMoreGroupPages((prev) => (prev !== nextHasMore ? nextHasMore : prev));
 
     if (groupOffset === 0) {
-      setWorkflowRows(workflowsPage);
+      setWorkflowRows((current) => {
+          if (current.length === workflowsPage.length && current[0]?.id === workflowsPage[0]?.id) {
+              return current;
+          }
+          return workflowsPage;
+      });
       return;
     }
 
     setWorkflowRows((existingRows) => {
       const existingById = new Map(existingRows.map((row) => [row.id, row]));
+      let hasChanges = false;
 
       for (const row of workflowsPage) {
-        existingById.set(row.id, row);
+        if (existingById.get(row.id) !== row) {
+          existingById.set(row.id, row);
+          hasChanges = true;
+        }
       }
+
+      if (!hasChanges) return existingRows;
 
       const seen = new Set(existingRows.map((row) => row.id));
       const mergedExistingRows = existingRows
         .map((row) => existingById.get(row.id))
-        .filter((row): row is (typeof existingRows)[number] => Boolean(row));
+        .filter((row): row is WorkflowListRow => Boolean(row));
       const appendedRows = workflowsPage.filter((row) => !seen.has(row.id));
 
       return [...mergedExistingRows, ...appendedRows];
     });
-  }, [groupOffset, workflowsPage]);
+  }, [groupOffset, workflowsPage, isFetching]); // added isFetching as dependency
 
   const workflows = workflowRows ?? EMPTY_PHASES;
 

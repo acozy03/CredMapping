@@ -252,6 +252,14 @@ export const workflowsRouter = createTRPCRouter({
         .select({
           workflowType: workflowPhases.workflowType,
           relatedId: workflowPhases.relatedId,
+          ownerId: sql<string>`
+            CASE 
+              WHEN ${workflowPhases.workflowType} = 'pfc' THEN (SELECT provider_id FROM provider_facility_credentials WHERE id = ${workflowPhases.relatedId})
+              WHEN ${workflowPhases.workflowType} = 'state_licenses' THEN (SELECT provider_id FROM provider_state_licenses WHERE id = ${workflowPhases.relatedId})
+              WHEN ${workflowPhases.workflowType} = 'provider_vesta_privileges' THEN (SELECT provider_id FROM provider_vesta_privileges WHERE id = ${workflowPhases.relatedId})
+              WHEN ${workflowPhases.workflowType} = 'prelive_pipeline' THEN (SELECT facility_id FROM facility_prelive_info WHERE id = ${workflowPhases.relatedId})
+            END
+          `.as("owner_id"),
           latestUpdatedAt:
             sql<Date | null>`max(${workflowPhases.updatedAt})`.as("latest_updated_at"),
         })
@@ -299,6 +307,29 @@ export const workflowsRouter = createTRPCRouter({
             SELECT count(*)::int FROM ${incidentLogs}
             WHERE ${incidentLogs.workflowID} = ${workflowPhases.id}
           )`.as("incident_count"),
+          totalGroupsForOwner: sql<number>`(
+            SELECT count(DISTINCT (w2.workflow_type || ':' || w2.related_id))::int 
+            FROM ${workflowPhases} w2 
+            WHERE 
+              (w2.workflow_type IN ('pfc', 'state_licenses', 'provider_vesta_privileges') AND 
+              EXISTS (SELECT 1 FROM providers p WHERE p.id = (
+                CASE 
+                  WHEN w2.workflow_type = 'pfc' THEN (SELECT provider_id FROM provider_facility_credentials WHERE id = w2.related_id)
+                  WHEN w2.workflow_type = 'state_licenses' THEN (SELECT provider_id FROM provider_state_licenses WHERE id = w2.related_id)
+                  WHEN w2.workflow_type = 'provider_vesta_privileges' THEN (SELECT provider_id FROM provider_vesta_privileges WHERE id = w2.related_id)
+                END
+              ) AND p.id = (
+                CASE 
+                  WHEN ${workflowPhases.workflowType} = 'pfc' THEN (SELECT provider_id FROM provider_facility_credentials WHERE id = ${workflowPhases.relatedId})
+                  WHEN ${workflowPhases.workflowType} = 'state_licenses' THEN (SELECT provider_id FROM provider_state_licenses WHERE id = ${workflowPhases.relatedId})
+                  WHEN ${workflowPhases.workflowType} = 'provider_vesta_privileges' THEN (SELECT provider_id FROM provider_vesta_privileges WHERE id = ${workflowPhases.relatedId})
+                END
+              )))
+              OR
+              (w2.workflow_type = 'prelive_pipeline' AND 
+              (SELECT facility_id FROM facility_prelive_info WHERE id = w2.related_id) = 
+              (SELECT facility_id FROM facility_prelive_info WHERE id = ${workflowPhases.relatedId}))
+          )`.as("total_groups_for_owner"),
         })
         .from(workflowPhases)
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
