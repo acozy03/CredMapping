@@ -154,7 +154,7 @@ const getDecisionTone = (decision: string | null) => {
 
 const hasActiveWorkflows = (relatedId: string, workflows: NormalizedWorkflow[]) => {
   const related = workflows.filter((w) => w.relatedId === relatedId);
-  if (related.length === 0) return true;
+  if (related.length === 0) return false;
   return related.some((w) => {
     if (!w.dueDate) return true;
     return new Date(w.dueDate).getTime() >= Date.now();

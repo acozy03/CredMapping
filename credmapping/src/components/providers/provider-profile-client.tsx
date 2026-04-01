@@ -126,7 +126,7 @@ const getDecisionTone = (decision: string | null) => {
 /** Returns true if any workflow for this entity has a due date that is NOT in the past */
 const hasActiveWorkflows = (relatedId: string, workflows: NormalizedWorkflow[]) => {
   const related = workflows.filter((w) => w.relatedId === relatedId);
-  if (related.length === 0) return true; // no workflows = show by default
+  if (related.length === 0) return false;
   return related.some((w) => {
     if (!w.dueDate) return true;
     return new Date(w.dueDate).getTime() >= Date.now();
