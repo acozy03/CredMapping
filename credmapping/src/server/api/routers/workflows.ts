@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, asc, desc, eq, exists, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, isNull, ne, or, sql, max } from "drizzle-orm";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { resolveAgentId, writeAuditLog } from "~/server/api/audit";
 import {
@@ -260,14 +260,13 @@ export const workflowsRouter = createTRPCRouter({
               WHEN ${workflowPhases.workflowType} = 'prelive_pipeline' THEN (SELECT facility_id FROM facility_prelive_info WHERE id = ${workflowPhases.relatedId})
             END
           `.as("owner_id"),
-          latestUpdatedAt:
-            sql<Date | null>`max(${workflowPhases.updatedAt})`.as("latest_updated_at"),
+          latestUpdatedAt: max(workflowPhases.updatedAt).as("latest_updated_at"),
         })
         .from(workflowPhases)
         .where(groupWhere)
         .groupBy(workflowPhases.workflowType, workflowPhases.relatedId)
         .orderBy(
-          desc(sql`max(${workflowPhases.updatedAt})`),
+          desc(max(workflowPhases.updatedAt)),
           asc(workflowPhases.workflowType),
           asc(workflowPhases.relatedId),
         )
@@ -284,7 +283,7 @@ export const workflowsRouter = createTRPCRouter({
           eq(workflowPhases.relatedId, group.relatedId),
         ),
       );
-
+      
       const rows = await ctx.db
         .select({
           id: workflowPhases.id,
