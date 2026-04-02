@@ -12,6 +12,7 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { env } from "~/env";
+import { type AgentTeam } from "~/server/auth/domain";
 import { resolveAuthContextForUser } from "~/server/auth/request-context";
 import { db, withUserDb } from "~/server/db";
 
@@ -72,6 +73,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
     db,
     user: authContext.user,
     appRole: authContext.appRole,
+    team: authContext.team,
     ...opts,
   };
 };
@@ -201,3 +203,74 @@ export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
 
   return next({ ctx });
 });
+
+/**
+ * Middleware that resolves the authenticated user's team ("IN" | "US") from
+ * their email domain and exposes it as `ctx.team`.
+ *
+ * Use this as a building block for team-specific guards:
+ *   - `withTeam`          – reusable middleware, attaches non-null `team`
+ *   - `teamProcedure`     – protected procedure with `ctx.team` guaranteed
+ *   - `requireTeam("US")` – inline helper for one-off guards inside a procedure
+ */
+const withTeam = t.middleware(({ ctx, next }) => {
+  const team = ctx.team;
+
+  if (!team) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Unable to determine your team from your email domain.",
+    });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      team,           // narrowed to AgentTeam (non-null)
+    },
+  });
+});
+
+/**
+ * Protected procedure that also guarantees `ctx.team` is resolved.
+ * Every downstream handler receives `ctx.team: "IN" | "US"`.
+ */
+export const teamProcedure = protectedProcedure.use(withTeam);
+
+/**
+ * Factory that creates a procedure guard restricted to a specific team.
+ *
+ * Usage:
+ *   export const usOnlyProcedure  = teamGuardedProcedure("US");
+ *   export const inOnlyProcedure  = teamGuardedProcedure("IN");
+ */
+export const teamGuardedProcedure = (allowedTeam: AgentTeam) =>
+  teamProcedure.use(({ ctx, next }) => {
+    if (ctx.team !== allowedTeam) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: `This operation is restricted to the ${allowedTeam} team.`,
+      });
+    }
+
+    return next({ ctx });
+  });
+
+/**
+ * Helper you can call *inside* any procedure body for ad-hoc team checks
+ * without creating a separate procedure.
+ *
+ * Usage inside a mutation/query:
+ *   requireTeam(ctx.team, "US");
+ */
+export const requireTeam = (
+  currentTeam: AgentTeam | null | undefined,
+  allowedTeam: AgentTeam,
+): void => {
+  if (currentTeam !== allowedTeam) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `This operation is restricted to the ${allowedTeam} team.`,
+    });
+  }
+};

@@ -3,13 +3,14 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
-import { getAppRole, isAllowedEmail, type AppRole } from "~/server/auth/domain";
+import { getAppRole, getTeamFromEmail, isAllowedEmail, type AgentTeam, type AppRole } from "~/server/auth/domain";
 import { withUserDb } from "~/server/db";
 import { agents } from "~/server/db/schema";
 import { createClient } from "~/utils/supabase/server";
 
 type AuthContextResult = {
   appRole: AppRole;
+  team: AgentTeam | null;
   user: User | null;
 };
 
@@ -21,6 +22,7 @@ export const resolveAuthContextForUser = async (
   if (!authenticatedUser) {
     return {
       appRole: "user",
+      team: null,
       user: null,
     };
   }
@@ -37,6 +39,7 @@ export const resolveAuthContextForUser = async (
 
   return {
     appRole: getAppRole({ agentRole: agent?.role }),
+    team: getTeamFromEmail(authenticatedUser.email),
     user: authenticatedUser,
   };
 };
@@ -53,6 +56,7 @@ export const getRequestAuthContext = cache(async (): Promise<AuthContextResult> 
 
 export const requireRequestAuthContext = async (): Promise<{
   appRole: AppRole;
+  team: AgentTeam | null;
   user: User;
 }> => {
   const authContext = await getRequestAuthContext();
@@ -61,5 +65,5 @@ export const requireRequestAuthContext = async (): Promise<{
     redirect("/");
   }
 
-  return authContext as { appRole: AppRole; user: User };
+  return authContext as { appRole: AppRole; team: AgentTeam | null; user: User };
 };

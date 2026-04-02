@@ -152,13 +152,11 @@ const getDecisionTone = (decision: string | null) => {
   return "border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300";
 };
 
+/** Returns true if any workflow for this entity is not yet completed */
 const hasActiveWorkflows = (relatedId: string, workflows: NormalizedWorkflow[]) => {
   const related = workflows.filter((w) => w.relatedId === relatedId);
   if (related.length === 0) return false;
-  return related.some((w) => {
-    if (!w.dueDate) return true;
-    return new Date(w.dueDate).getTime() >= Date.now();
-  });
+  return related.some((w) => w.status?.toLowerCase() !== "completed");
 };
 
 const getStatusTone = (status: string | null) => {
