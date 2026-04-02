@@ -8,7 +8,6 @@ import {
 } from "~/server/api/trpc";
 import { agents, authUsers, facilities, providers } from "~/server/db/schema";
 import { resolveAgentId, writeAuditLog } from "~/server/api/audit";
-import { getTeamFromEmail } from "~/server/auth/domain";
 
 export const superadminRouter = createTRPCRouter({
   /**
@@ -91,15 +90,12 @@ export const superadminRouter = createTRPCRouter({
       z.object({
         userId: z.string().uuid(),
         email: z.string().email(),
-        team: z.enum(["IN", "US"]).optional(),
+        team: z.enum(["IN", "US"]),
         teamNumber: z.number().int().positive().optional(),
         role: z.enum(["user", "admin", "superadmin"]),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Auto-derive team from email domain; allow superadmin override
-      const derivedTeam = input.team ?? getTeamFromEmail(input.email);
-
       // Check if agent already exists with this email
       const existing = await ctx.db
         .select({ id: agents.id })
@@ -118,7 +114,7 @@ export const superadminRouter = createTRPCRouter({
           firstName: "",
           lastName: "",
           email: input.email.toLowerCase(),
-          team: derivedTeam,
+          team: input.team,
           teamNumber: input.teamNumber ?? null,
           role: input.role,
         })

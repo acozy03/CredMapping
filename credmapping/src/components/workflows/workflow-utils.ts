@@ -1,8 +1,14 @@
+import { incidentCategoryEnum } from "~/server/db/schema";
+
 export type WorkflowSortMode =
   | "date_assigned_desc"
   | "date_assigned_asc"
   | "date_started_desc"
   | "date_started_asc";
+
+export type IncidentCategory = (typeof incidentCategoryEnum.enumValues)[number];
+
+export const INCIDENT_CATEGORIES = incidentCategoryEnum.enumValues;
 
 export const WORKFLOW_TYPE_LABELS: Record<string, string> = {
   pfc: "PFC",

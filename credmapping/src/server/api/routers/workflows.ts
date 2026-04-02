@@ -22,9 +22,12 @@ type ParentRecordData =
   | InferSelectModel<typeof providerVestaPrivileges>;
 
 import { env } from "~/env";
+import { INCIDENT_CATEGORIES } from "~/components/workflows/workflow-utils";
 
 const toNull = (v: string | undefined | null) =>
   v === undefined || v === null || v.trim() === "" ? null : v.trim();
+
+const incidentCategorySchema = z.enum(INCIDENT_CATEGORIES);
 
 /** Fire-and-forget POST to the n8n incident escalation webhook. */
 async function notifyIncidentWebhook(incidentIds: string[]) {
@@ -1235,7 +1238,7 @@ export const workflowsRouter = createTRPCRouter({
     .input(
       z.object({
         workflowId: z.string().uuid(),
-        subcategory: z.string().min(1, "Subcategory is required."),
+        subcategory: incidentCategorySchema,
         critical: z.boolean(),
         dateIdentified: z.string().date().min(1, "Date is required."),
         incidentDescription: z.string().optional(),
@@ -1282,7 +1285,7 @@ export const workflowsRouter = createTRPCRouter({
           .array(
             z.object({
               workflowId: z.string().uuid(),
-              subcategory: z.string().min(1, "Subcategory is required."),
+              subcategory: incidentCategorySchema,
               critical: z.boolean(),
               dateIdentified: z.string().min(1, "Date is required."),
               incidentDescription: z.string().optional(),
@@ -1334,7 +1337,7 @@ export const workflowsRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string().uuid(),
-        subcategory: z.string().optional(),
+        subcategory: incidentCategorySchema.optional(),
         critical: z.boolean().optional(),
         resolutionDate: z.string().date().optional(),
         finalResolution: z.string().optional(),
