@@ -1,8 +1,11 @@
+export { INCIDENT_CATEGORIES, type IncidentCategory } from "~/lib/workflows/incident-categories";
+
 export type WorkflowSortMode =
   | "date_assigned_desc"
   | "date_assigned_asc"
   | "date_started_desc"
   | "date_started_asc";
+
 
 export const WORKFLOW_TYPE_LABELS: Record<string, string> = {
   pfc: "PFC",
