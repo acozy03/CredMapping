@@ -238,6 +238,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
   const [payorEnrollmentFilter, setPayorEnrollmentFilter] = useState<BooleanFilter>("all");
   const [licensePathFilter, setLicensePathFilter] = useState("all");
   const [licenseCycleFilter, setLicenseCycleFilter] = useState("all");
+  const [licenseStateFilter, setLicenseStateFilter] = useState("all");
   const [privilegeTierFilter, setPrivilegeTierFilter] = useState("all");
   const [groupSortField, setGroupSortField] = useState<GroupSortField>(DEFAULT_GROUP_SORT_FIELD);
   const [groupSortDirection, setGroupSortDirection] = useState<SortDirection>(DEFAULT_GROUP_SORT_DIRECTION);
@@ -259,6 +260,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
   const allFacilityStates = useMemo(() => Array.from(new Set([...providerFacilityRows.map((row) => row.facilityState), ...facilityPreliveRows.map((row) => row.facilityState)].filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [facilityPreliveRows, providerFacilityRows]);
   const allLicensePaths = useMemo(() => Array.from(new Set(providerLicenseRows.map((row) => row.path).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerLicenseRows]);
   const allLicenseCycles = useMemo(() => Array.from(new Set(providerLicenseRows.map((row) => row.initialOrRenewal).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerLicenseRows]);
+  const allLicenseStates = useMemo(() => Array.from(new Set(providerLicenseRows.map((row) => row.state).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerLicenseRows]);
   const allPrivilegeTiers = useMemo(() => Array.from(new Set(providerVestaPrivilegesRows.map((row) => row.privilegeTier).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)), [providerVestaPrivilegesRows]);
 
   const filteredProviderFacility = useMemo(
@@ -291,9 +293,10 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
           (priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter))
           && (statusFilter === "all" || normalize(row.status) === normalize(statusFilter))
           && (licensePathFilter === "all" || normalize(row.path) === normalize(licensePathFilter))
-          && (licenseCycleFilter === "all" || normalize(row.initialOrRenewal) === normalize(licenseCycleFilter)),
+          && (licenseCycleFilter === "all" || normalize(row.initialOrRenewal) === normalize(licenseCycleFilter))
+          && (licenseStateFilter === "all" || normalize(row.state) === normalize(licenseStateFilter)),
       ),
-    [licenseCycleFilter, licensePathFilter, priorityFilter, providerLicenseRows, statusFilter],
+    [licenseCycleFilter, licensePathFilter, licenseStateFilter, priorityFilter, providerLicenseRows, statusFilter],
   );
   const filteredVestaPrivileges = useMemo(
     () =>
@@ -469,6 +472,7 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
     setPayorEnrollmentFilter("all");
     setLicensePathFilter("all");
     setLicenseCycleFilter("all");
+    setLicenseStateFilter("all");
     setPrivilegeTierFilter("all");
     setGroupSortField(DEFAULT_GROUP_SORT_FIELD);
     setGroupSortDirection(DEFAULT_GROUP_SORT_DIRECTION);
@@ -664,6 +668,18 @@ export function DashboardClient({ providerFacilityRows, facilityPreliveRows, pro
                           <SelectContent>
                             <SelectItem value="all">All Cycles</SelectItem>
                             {allLicenseCycles.map((cycle) => <SelectItem key={cycle} value={cycle}>{cycle}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-[130px_1fr] items-center gap-3">
+                        <label className="text-sm text-muted-foreground">License State</label> 
+                        <Select value={licenseStateFilter} onValueChange={setLicenseStateFilter}>
+                          <SelectTrigger><SelectValue placeholder="License state" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All States</SelectItem>
+                            {allLicenseStates.map((state) => (
+                              <SelectItem key={state} value={state}>{state}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
