@@ -8,6 +8,7 @@ FROM base AS deps
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
+COPY scripts ./scripts
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
@@ -31,6 +32,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json pnpm-lock.yaml ./
+COPY scripts ./scripts
 RUN pnpm install --frozen-lockfile --prod
 
 COPY --from=builder /app/.next ./.next

@@ -16,7 +16,7 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "preview": "next build && next start",
-    "prepare": "cd .. && husky credmapping/.husky",
+    "prepare": "node scripts/prepare.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
