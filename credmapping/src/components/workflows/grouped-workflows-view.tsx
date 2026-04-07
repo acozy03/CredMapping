@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  Building2,
   Search,
   User,
   UserPlus,
@@ -19,13 +18,7 @@ import {
 } from "~/components/ui/accordion";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
+import { ScrollIndicatorContainer } from "~/components/ui/scroll-indicator-container";
 import {
   Table,
   TableBody,
@@ -40,18 +33,19 @@ import {
   isOverdue,
   WORKFLOW_TYPE_LABELS,
   type WorkflowSortMode,
+  type GroupByMode,
 } from "~/components/workflows/workflow-utils";
 import { cn } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 
 type WorkflowListRow = RouterOutputs["workflows"]["list"][number];
 
-type GroupByMode = "provider" | "facility";
-
 type WorkflowGroup = {
   key: string;
   label: string;
   subtitle: string;
+  totalInDb: number;
+  isIncomplete: boolean;
   rows: WorkflowListRow[];
 };
 
@@ -66,7 +60,9 @@ type RelatedWorkflowGroup = {
 
 type GroupedWorkflowsViewProps = {
   rows: WorkflowListRow[];
+  groupBy: GroupByMode;
   sortBy: WorkflowSortMode;
+  filtersActive: boolean;
   onOpenWorkflow: (id: string) => void;
   onClaimWorkflow: (id: string) => void;
   onManagePhases: (input: {
@@ -133,7 +129,7 @@ function getRelatedWorkflowLabel(row: WorkflowListRow) {
 }
 
 function getRelatedWorkflowSubtitle(group: RelatedWorkflowGroup) {
-  const workflowWord = group.rows.length === 1 ? "workflow" : "workflows";
+  const workflowWord = group.rows.length === 1 ? "phase" : "phases";
   return `${group.rows.length} ${workflowWord}`;
 }
 
@@ -217,15 +213,16 @@ function GroupedWorkflowsSidebar({
           />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {groups.length === 0 ? (
-          <div className="text-muted-foreground p-4 text-sm">
-            No groups match your search.
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {groups.map((group) => (
-              <button
+      <ScrollIndicatorContainer className="min-h-0 flex-1">
+        <div className="space-y-2 p-2">
+          {groups.length === 0 ? (
+            <div className="text-muted-foreground p-4 text-sm">
+              No groups match your search.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {groups.map((group) => (
+               <button
                 type="button"
                 key={group.key}
                 onClick={() => onSelect(group.key)}
@@ -237,14 +234,23 @@ function GroupedWorkflowsSidebar({
                 )}
               >
                 <p className="truncate text-sm font-medium">{group.label}</p>
-                <p className="text-muted-foreground truncate text-xs">
-                  {group.subtitle}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className={cn(
+                    "truncate text-xs",
+                    group.isIncomplete ? "text-muted-foreground font-medium" : "text-muted-foreground"
+                  )}>
+                    {group.subtitle}
+                  </p>
+                  {group.isIncomplete && (
+                    <AlertTriangle className="size-3 text-muted-foreground shrink-0" />
+                  )}
+                </div>
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </ScrollIndicatorContainer>
     </div>
   );
 }
@@ -541,14 +547,15 @@ function GroupedWorkflowsDetailPane({
 
 export function GroupedWorkflowsView({
   rows,
+  groupBy,
   sortBy,
+  filtersActive,
   onOpenWorkflow,
   onClaimWorkflow,
   onManagePhases,
   renderRelatedWorkflowActions,
   claimPending,
 }: GroupedWorkflowsViewProps) {
-  const [groupBy, setGroupBy] = useState<GroupByMode>("provider");
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const [groupSearch, setGroupSearch] = useState("");
   const [detailSearch, setDetailSearch] = useState("");
@@ -585,6 +592,8 @@ export function GroupedWorkflowsView({
               }
             : facilityFallback;
 
+      const totalInDb = row.totalGroupsForOwner ?? 0;
+
       const existing = map.get(groupMeta.key);
       if (existing) {
         existing.rows.push(row);
@@ -594,18 +603,37 @@ export function GroupedWorkflowsView({
           label: groupMeta.label,
           subtitle: groupMeta.subtitle,
           rows: [row],
+          totalInDb,
+          isIncomplete: totalInDb > 1,
         });
       }
     }
 
-    return Array.from(map.values())
-      .map((group) => ({
-        ...group,
-        subtitle: `${group.rows.length} workflow${group.rows.length === 1 ? "" : "s"}`,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [groupBy, rows]);
+    return Array.from(map.values()).map((group) => {
+        const loadedCount = new Set(
+          group.rows.map((r) => `${r.workflowType}:${r.relatedId}`),
+        ).size;
 
+        const isIncomplete = !filtersActive && group.totalInDb > loadedCount;
+
+        return {
+          ...group,
+          subtitle:
+            !filtersActive && isIncomplete
+              ? `${loadedCount} of ${group.totalInDb} workflows loaded`
+              : `${loadedCount} workflow${loadedCount === 1 ? "" : "s"}`,
+          isIncomplete,
+        };
+      }).sort((a, b) => {
+        const aIsUnassigned = a.key.includes("unassigned");
+        const bIsUnassigned = b.key.includes("unassigned");
+
+        if (aIsUnassigned && !bIsUnassigned) return 1;
+        if (!aIsUnassigned && bIsUnassigned) return -1;
+
+        return a.label.localeCompare(b.label);
+      });
+    }, [groupBy, rows, filtersActive]);
   const visibleGroups = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
     if (!q) return groups;
@@ -664,29 +692,6 @@ export function GroupedWorkflowsView({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Select
-          value={groupBy}
-          onValueChange={(value) => setGroupBy(value as GroupByMode)}
-        >
-          <SelectTrigger className="h-9 w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="provider">Group by Provider</SelectItem>
-            <SelectItem value="facility">Group by Facility</SelectItem>
-          </SelectContent>
-        </Select>
-        <Badge variant="secondary" className="h-8 gap-1 px-2">
-          {groupBy === "provider" ? (
-            <User className="size-3" />
-          ) : (
-            <Building2 className="size-3" />
-          )}
-          {groups.length} group{groups.length === 1 ? "" : "s"}
-        </Badge>
-      </div>
-
       {groups.length === 0 ? (
         <div className="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-md border border-dashed p-8 text-center">
           <Workflow className="text-muted-foreground/50 size-10" />

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, asc, desc, eq, exists, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, isNull, ne, or, sql, max } from "drizzle-orm";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { resolveAgentId, writeAuditLog } from "~/server/api/audit";
 import {
@@ -28,6 +28,15 @@ const toNull = (v: string | undefined | null) =>
   v === undefined || v === null || v.trim() === "" ? null : v.trim();
 
 const incidentCategorySchema = z.enum(INCIDENT_CATEGORIES);
+
+const compareWorkflowPhaseOrderSafe = (
+  aPhaseNumber: number | null,
+  bPhaseNumber: number | null,
+) => {
+  const a = typeof aPhaseNumber === "number" ? aPhaseNumber : Number.MAX_SAFE_INTEGER;
+  const b = typeof bPhaseNumber === "number" ? bPhaseNumber : Number.MAX_SAFE_INTEGER;
+  return a - b;
+};
 
 /** Fire-and-forget POST to the n8n incident escalation webhook. */
 async function notifyIncidentWebhook(incidentIds: string[]) {
@@ -240,6 +249,44 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
+      const groupWhere = conditions.length ? and(...conditions) : undefined;
+
+      const pagedGroups = await ctx.db
+        .select({
+          workflowType: workflowPhases.workflowType,
+          relatedId: workflowPhases.relatedId,
+          ownerId: sql<string>`
+            CASE 
+              WHEN ${workflowPhases.workflowType} = 'pfc' THEN (SELECT provider_id FROM provider_facility_credentials WHERE id = ${workflowPhases.relatedId})
+              WHEN ${workflowPhases.workflowType} = 'state_licenses' THEN (SELECT provider_id FROM provider_state_licenses WHERE id = ${workflowPhases.relatedId})
+              WHEN ${workflowPhases.workflowType} = 'provider_vesta_privileges' THEN (SELECT provider_id FROM provider_vesta_privileges WHERE id = ${workflowPhases.relatedId})
+              WHEN ${workflowPhases.workflowType} = 'prelive_pipeline' THEN (SELECT facility_id FROM facility_prelive_info WHERE id = ${workflowPhases.relatedId})
+            END
+          `.as("owner_id"),
+          latestUpdatedAt: max(workflowPhases.updatedAt).as("latest_updated_at"),
+        })
+        .from(workflowPhases)
+        .where(groupWhere)
+        .groupBy(workflowPhases.workflowType, workflowPhases.relatedId)
+        .orderBy(
+          desc(max(workflowPhases.updatedAt)),
+          asc(workflowPhases.workflowType),
+          asc(workflowPhases.relatedId),
+        )
+        .limit(input.limit)
+        .offset(input.offset);
+
+      if (pagedGroups.length === 0) {
+        return [];
+      }
+
+      const groupFilters = pagedGroups.map((group) =>
+        and(
+          eq(workflowPhases.workflowType, group.workflowType),
+          eq(workflowPhases.relatedId, group.relatedId),
+        ),
+      );
+      
       const rows = await ctx.db
         .select({
           id: workflowPhases.id,
@@ -262,25 +309,97 @@ export const workflowsRouter = createTRPCRouter({
             SELECT count(*)::int FROM ${incidentLogs}
             WHERE ${incidentLogs.workflowID} = ${workflowPhases.id}
           )`.as("incident_count"),
+          totalGroupsForOwner: sql<number>`(
+            SELECT count(DISTINCT (w2.workflow_type || ':' || w2.related_id))::int 
+            FROM ${workflowPhases} w2 
+            WHERE 
+              (w2.workflow_type IN ('pfc', 'state_licenses', 'provider_vesta_privileges') AND 
+              EXISTS (SELECT 1 FROM providers p WHERE p.id = (
+                CASE 
+                  WHEN w2.workflow_type = 'pfc' THEN (SELECT provider_id FROM provider_facility_credentials WHERE id = w2.related_id)
+                  WHEN w2.workflow_type = 'state_licenses' THEN (SELECT provider_id FROM provider_state_licenses WHERE id = w2.related_id)
+                  WHEN w2.workflow_type = 'provider_vesta_privileges' THEN (SELECT provider_id FROM provider_vesta_privileges WHERE id = w2.related_id)
+                END
+              ) AND p.id = (
+                CASE 
+                  WHEN ${workflowPhases.workflowType} = 'pfc' THEN (SELECT provider_id FROM provider_facility_credentials WHERE id = ${workflowPhases.relatedId})
+                  WHEN ${workflowPhases.workflowType} = 'state_licenses' THEN (SELECT provider_id FROM provider_state_licenses WHERE id = ${workflowPhases.relatedId})
+                  WHEN ${workflowPhases.workflowType} = 'provider_vesta_privileges' THEN (SELECT provider_id FROM provider_vesta_privileges WHERE id = ${workflowPhases.relatedId})
+                END
+              )))
+              OR
+              (w2.workflow_type = 'prelive_pipeline' AND 
+              (SELECT facility_id FROM facility_prelive_info WHERE id = w2.related_id) = 
+              (SELECT facility_id FROM facility_prelive_info WHERE id = ${workflowPhases.relatedId}))
+          )`.as("total_groups_for_owner"),
         })
         .from(workflowPhases)
         .leftJoin(agents, eq(workflowPhases.agentAssigned, agents.id))
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(workflowPhases.updatedAt))
-        .limit(input.limit)
-        .offset(input.offset);
+        .where(or(...groupFilters))
+        .orderBy(
+          asc(workflowPhases.workflowType),
+          asc(workflowPhases.relatedId),
+          asc(workflowPhases.phaseNumber),
+          asc(workflowPhases.createdAt),
+        );
+
+      const groupOrder = new Map(
+        pagedGroups.map((group, index) => [
+          `${group.workflowType}:${group.relatedId}`,
+          index,
+        ]),
+      );
+
+      const sortedRows = [...rows].sort((a, b) => {
+        const aGroupKey = `${a.workflowType}:${a.relatedId}`;
+        const bGroupKey = `${b.workflowType}:${b.relatedId}`;
+        const aGroupIndex =
+          groupOrder.get(aGroupKey) ?? Number.POSITIVE_INFINITY;
+        const bGroupIndex =
+          groupOrder.get(bGroupKey) ?? Number.POSITIVE_INFINITY;
+        if (aGroupIndex !== bGroupIndex) {
+          return aGroupIndex - bGroupIndex;
+        }
+
+        const phaseOrder = compareWorkflowPhaseOrderSafe(
+          a.phaseNumber,
+          b.phaseNumber,
+        );
+        if (phaseOrder !== 0) {
+          return phaseOrder;
+        }
+
+        const aCreatedAt = (a as { createdAt?: Date | null }).createdAt;
+        const bCreatedAt = (b as { createdAt?: Date | null }).createdAt;
+        const aCreatedAtTime = aCreatedAt?.getTime();
+        const bCreatedAtTime = bCreatedAt?.getTime();
+        if (aCreatedAtTime !== bCreatedAtTime) {
+          if (aCreatedAtTime === undefined) return 1;
+          if (bCreatedAtTime === undefined) return -1;
+          return aCreatedAtTime - bCreatedAtTime;
+        }
+
+        const aId = String((a as { id?: string | null }).id ?? "");
+        const bId = String((b as { id?: string | null }).id ?? "");
+        const idOrder = aId.localeCompare(bId);
+        if (idOrder !== 0) {
+          return idOrder;
+        }
+
+        return aGroupKey.localeCompare(bGroupKey);
+      });
 
       // Enrich with context names for the related entity
-      const pfcIds = rows
+      const pfcIds = sortedRows
         .filter((r) => r.workflowType === "pfc")
         .map((r) => r.relatedId);
-      const licenseIds = rows
+      const licenseIds = sortedRows
         .filter((r) => r.workflowType === "state_licenses")
         .map((r) => r.relatedId);
-      const privIds = rows
+      const privIds = sortedRows
         .filter((r) => r.workflowType === "provider_vesta_privileges")
         .map((r) => r.relatedId);
-      const preliveIds = rows
+      const preliveIds = sortedRows
         .filter((r) => r.workflowType === "prelive_pipeline")
         .map((r) => r.relatedId);
 
@@ -394,7 +513,7 @@ export const workflowsRouter = createTRPCRouter({
         );
       }
 
-      return rows.map((row) => {
+      return sortedRows.map((row) => {
         const pfc = pfcMap.get(row.relatedId);
         const assignedName =
           row.assignedFirstName || row.assignedLastName
