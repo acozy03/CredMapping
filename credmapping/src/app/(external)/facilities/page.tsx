@@ -1,7 +1,10 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { Mail, Phone } from "lucide-react";
 import Link from "next/link";
-import { FacilitiesPendingProvider, FacilitiesListOverlay } from "~/components/facilities/facilities-pending-context";
+import {
+  FacilitiesPendingProvider,
+  FacilitiesListOverlay,
+} from "~/components/facilities/facilities-pending-context";
 import { FacilitiesTopSection } from "~/components/facilities/facilities-top-section";
 import { ProvidersAutoAdvance } from "~/components/providers-auto-advance";
 import { Badge } from "~/components/ui/badge";
@@ -43,9 +46,24 @@ const isFacilitySort = (value: string): value is FacilitySort =>
 const isActivityFilter = (value: string): value is ActivityFilter =>
   ["all", "active", "inactive", "in_progress"].includes(value);
 
-const buildWhereClause = (...conditions: Array<Parameters<typeof and>[number] | undefined>) => {
-  const definedConditions = conditions.filter((condition) => condition !== undefined);
+const buildWhereClause = (
+  ...conditions: Array<Parameters<typeof and>[number] | undefined>
+) => {
+  const definedConditions = conditions.filter(
+    (condition) => condition !== undefined,
+  );
   return definedConditions.length > 0 ? and(...definedConditions) : undefined;
+};
+
+const getProxySearchCondition = (search: string) => {
+  const normalized = search.trim().toLowerCase();
+  if (["proxy", "proxied", "true", "yes"].includes(normalized)) {
+    return eq(facilities.proxy, true);
+  }
+  if (["not proxy", "not proxied", "false", "no"].includes(normalized)) {
+    return eq(facilities.proxy, false);
+  }
+  return undefined;
 };
 
 type TrendRow = {
@@ -58,12 +76,22 @@ const buildTrendPoints = (params: {
   secondary: TrendRow[];
   tertiary: TrendRow[];
 }) => {
-  const trendMap = new Map<string, { primary: number; secondary: number; tertiary: number }>();
+  const trendMap = new Map<
+    string,
+    { primary: number; secondary: number; tertiary: number }
+  >();
 
-  const addRows = (rows: TrendRow[], metric: "primary" | "secondary" | "tertiary") => {
+  const addRows = (
+    rows: TrendRow[],
+    metric: "primary" | "secondary" | "tertiary",
+  ) => {
     for (const row of rows) {
       if (!row.date) continue;
-      const current = trendMap.get(row.date) ?? { primary: 0, secondary: 0, tertiary: 0 };
+      const current = trendMap.get(row.date) ?? {
+        primary: 0,
+        secondary: 0,
+        tertiary: 0,
+      };
       current[metric] += Number(row.count);
       trendMap.set(row.date, current);
     }
@@ -86,17 +114,25 @@ export default async function FacilitiesPage(props: {
 
   const searchParams = await props.searchParams;
 
-  const search = typeof searchParams?.search === "string" ? searchParams.search.trim() : "";
+  const search =
+    typeof searchParams?.search === "string" ? searchParams.search.trim() : "";
   const hasSearch = search.length > 0;
 
-  const rawSort = typeof searchParams?.sort === "string" ? searchParams.sort : "";
+  const rawSort =
+    typeof searchParams?.sort === "string" ? searchParams.sort : "";
   const sort: FacilitySort = isFacilitySort(rawSort) ? rawSort : "name_asc";
 
-  const rawActivity = typeof searchParams?.activity === "string" ? searchParams.activity : "all";
-  const activityFilter: ActivityFilter = isActivityFilter(rawActivity) ? rawActivity : "all";
+  const rawActivity =
+    typeof searchParams?.activity === "string" ? searchParams.activity : "all";
+  const activityFilter: ActivityFilter = isActivityFilter(rawActivity)
+    ? rawActivity
+    : "all";
 
   const pageSize = 10;
-  const rawLimit = typeof searchParams?.limit === "string" ? searchParams.limit : `${pageSize}`;
+  const rawLimit =
+    typeof searchParams?.limit === "string"
+      ? searchParams.limit
+      : `${pageSize}`;
   const requestedLimit = Number.isFinite(Number(rawLimit))
     ? Math.max(pageSize, Number.parseInt(rawLimit, 10) || pageSize)
     : pageSize;
@@ -107,7 +143,7 @@ export default async function FacilitiesPage(props: {
         ilike(facilities.state, `%${search}%`),
         ilike(facilities.email, `%${search}%`),
         ilike(facilities.address, `%${search}%`),
-        ilike(facilities.proxy, `%${search}%`),
+        getProxySearchCondition(search),
       )
     : undefined;
 
@@ -148,26 +184,30 @@ export default async function FacilitiesPage(props: {
       const credentialDate = sql<string>`to_char(${providerFacilityCredentials.createdAt}::date, 'YYYY-MM-DD')`;
       const workflowDate = sql<string>`to_char(${workflowPhases.createdAt}::date, 'YYYY-MM-DD')`;
 
-      const [facilityTrendRows, credentialTrendRows, workflowTrendRows, totalVisibleRow] =
-        await Promise.all([
-          db
-            .select({ count: count(), date: facilityDate })
-            .from(facilities)
-            .groupBy(facilityDate)
-            .orderBy(facilityDate),
-          db
-            .select({ count: count(), date: credentialDate })
-            .from(providerFacilityCredentials)
-            .groupBy(credentialDate)
-            .orderBy(credentialDate),
-          db
-            .select({ count: count(), date: workflowDate })
-            .from(workflowPhases)
-            .where(eq(workflowPhases.workflowType, "pfc"))
-            .groupBy(workflowDate)
-            .orderBy(workflowDate),
-          db.select({ count: count() }).from(facilities).where(whereClause),
-        ]);
+      const [
+        facilityTrendRows,
+        credentialTrendRows,
+        workflowTrendRows,
+        totalVisibleRow,
+      ] = await Promise.all([
+        db
+          .select({ count: count(), date: facilityDate })
+          .from(facilities)
+          .groupBy(facilityDate)
+          .orderBy(facilityDate),
+        db
+          .select({ count: count(), date: credentialDate })
+          .from(providerFacilityCredentials)
+          .groupBy(credentialDate)
+          .orderBy(credentialDate),
+        db
+          .select({ count: count(), date: workflowDate })
+          .from(workflowPhases)
+          .where(eq(workflowPhases.workflowType, "pfc"))
+          .groupBy(workflowDate)
+          .orderBy(workflowDate),
+        db.select({ count: count() }).from(facilities).where(whereClause),
+      ]);
 
       const totalVisibleCount = totalVisibleRow[0]?.count ?? 0;
       const visibleLimit = Math.min(requestedLimit, totalVisibleCount);
@@ -187,11 +227,16 @@ export default async function FacilitiesPage(props: {
                 .select()
                 .from(facilityContacts)
                 .where(inArray(facilityContacts.facilityId, facilityIds))
-                .orderBy(desc(facilityContacts.isPrimary), facilityContacts.name),
+                .orderBy(
+                  desc(facilityContacts.isPrimary),
+                  facilityContacts.name,
+                ),
               db
                 .select()
                 .from(providerFacilityCredentials)
-                .where(inArray(providerFacilityCredentials.facilityId, facilityIds))
+                .where(
+                  inArray(providerFacilityCredentials.facilityId, facilityIds),
+                )
                 .orderBy(desc(providerFacilityCredentials.updatedAt)),
             ])
           : [[], []];
@@ -264,7 +309,9 @@ export default async function FacilitiesPage(props: {
     credentialsByFacility.set(credential.facilityId, current);
   }
 
-  const providersById = new Map(providerRows.map((provider) => [provider.id, provider]));
+  const providersById = new Map(
+    providerRows.map((provider) => [provider.id, provider]),
+  );
 
   const workflowsByCredential = new Map<string, typeof workflowRows>();
   for (const workflow of workflowRows) {
@@ -278,7 +325,8 @@ export default async function FacilitiesPage(props: {
     const facilityCredentialRows = credentialsByFacility.get(facility.id) ?? [];
 
     const workflowCount = facilityCredentialRows.reduce(
-      (sum, credential) => sum + (workflowsByCredential.get(credential.id)?.length ?? 0),
+      (sum, credential) =>
+        sum + (workflowsByCredential.get(credential.id)?.length ?? 0),
       0,
     );
 
@@ -288,7 +336,9 @@ export default async function FacilitiesPage(props: {
       credentials: facilityCredentialRows,
       workflowCount,
       primaryContact:
-        facilityContactsRows.find((contact) => contact.isPrimary) ?? facilityContactsRows[0] ?? null,
+        facilityContactsRows.find((contact) => contact.isPrimary) ??
+        facilityContactsRows[0] ??
+        null,
     };
   });
 
@@ -327,218 +377,290 @@ export default async function FacilitiesPage(props: {
               heightClassName="h-full"
               viewportClassName="facilities-scroll-viewport"
             >
-          <div className="space-y-4 p-4">
-            {facilityCards.map((card) => {
-              const { facility, contacts, credentials, primaryContact, workflowCount } = card;
-              const primaryPhoneHref = primaryContact?.phone
-                ? sanitizePhoneForHref(primaryContact.phone)
-                : "";
-              const providerCount = new Set(
-                credentials.map((credential) => credential.providerId).filter(Boolean),
-              ).size;
-              const statusTone = getFacilityStatusTone(facility.status ?? null);
+              <div className="space-y-4 p-4">
+                {facilityCards.map((card) => {
+                  const {
+                    facility,
+                    contacts,
+                    credentials,
+                    primaryContact,
+                    workflowCount,
+                  } = card;
+                  const primaryPhoneHref = primaryContact?.phone
+                    ? sanitizePhoneForHref(primaryContact.phone)
+                    : "";
+                  const providerCount = new Set(
+                    credentials
+                      .map((credential) => credential.providerId)
+                      .filter(Boolean),
+                  ).size;
+                  const statusTone = getFacilityStatusTone(
+                    facility.status ?? null,
+                  );
 
-              return (
-                <section key={facility.id} className={`bg-card rounded-lg border ${statusTone}`}>
-                  <details>
-                    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 border-b p-4 [&::-webkit-details-marker]:hidden">
-                      <div className="flex min-h-9 items-center gap-3">
-                        <div>
-                          <h2 className="text-lg font-semibold">
-                            <Link className="hover:underline" href={`/facilities/${facility.id}`}>
-                              {facility.name ?? "Unnamed Facility"}
-                            </Link>
-                          </h2>
-                          <p className="text-muted-foreground text-sm">
-                            {facility.state ?? "—"} {facility.proxy ? `• Proxy: ${facility.proxy}` : ""}
-                          </p>
-                        </div>
-                      </div>
+                  return (
+                    <section
+                      key={facility.id}
+                      className={`bg-card rounded-lg border ${statusTone}`}
+                    >
+                      <details>
+                        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 border-b p-4 [&::-webkit-details-marker]:hidden">
+                          <div className="flex min-h-9 items-center gap-3">
+                            <div>
+                              <h2 className="text-lg font-semibold">
+                                <Link
+                                  className="hover:underline"
+                                  href={`/facilities/${facility.id}`}
+                                >
+                                  {facility.name ?? "Unnamed Facility"}
+                                </Link>
+                              </h2>
+                              <p className="text-muted-foreground text-sm">
+                                {facility.state ?? "—"}{" "}
+                                {facility.proxy ? "• Proxy" : ""}
+                              </p>
+                            </div>
+                          </div>
 
-                      <div className="text-muted-foreground space-y-2 text-right text-sm">
-                        <div className="flex items-center justify-end gap-2">
-                          {primaryContact?.email ? (
-                            <a
-                              className="text-foreground underline-offset-4 transition hover:underline"
-                              href={`mailto:${primaryContact.email}`}
-                            >
-                              {primaryContact.email}
-                            </a>
-                          ) : (
-                            <p>No facility contact email</p>
-                          )}
-                          <Mail className="text-muted-foreground size-4" />
-                        </div>
-                        <div className="flex items-center justify-end gap-2">
-                          {primaryContact?.phone && primaryPhoneHref ? (
-                            <a
-                              className="text-foreground underline-offset-4 transition hover:underline"
-                              href={`tel:${primaryPhoneHref}`}
-                            >
-                              {primaryContact.phone}
-                            </a>
-                          ) : (
-                            <p>No facility contact phone</p>
-                          )}
-                          <Phone className="text-muted-foreground size-4" />
-                        </div>
-                      </div>
-                    </summary>
+                          <div className="text-muted-foreground space-y-2 text-right text-sm">
+                            <div className="flex items-center justify-end gap-2">
+                              {primaryContact?.email ? (
+                                <a
+                                  className="text-foreground underline-offset-4 transition hover:underline"
+                                  href={`mailto:${primaryContact.email}`}
+                                >
+                                  {primaryContact.email}
+                                </a>
+                              ) : (
+                                <p>No facility contact email</p>
+                              )}
+                              <Mail className="text-muted-foreground size-4" />
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              {primaryContact?.phone && primaryPhoneHref ? (
+                                <a
+                                  className="text-foreground underline-offset-4 transition hover:underline"
+                                  href={`tel:${primaryPhoneHref}`}
+                                >
+                                  {primaryContact.phone}
+                                </a>
+                              ) : (
+                                <p>No facility contact phone</p>
+                              )}
+                              <Phone className="text-muted-foreground size-4" />
+                            </div>
+                          </div>
+                        </summary>
 
-                    <div className="grid gap-4 p-4 lg:grid-cols-4">
-                      <div className="rounded-md border p-3">
-                        <p className="text-muted-foreground text-xs uppercase">General</p>
-                        <dl className="mt-2 space-y-1 text-sm">
-                          <div className="flex justify-between gap-2">
-                            <dt>Status</dt>
-                            <dd>
-                              {facility.status ?? "—"}
-                            </dd>
+                        <div className="grid gap-4 p-4 lg:grid-cols-4">
+                          <div className="rounded-md border p-3">
+                            <p className="text-muted-foreground text-xs uppercase">
+                              General
+                            </p>
+                            <dl className="mt-2 space-y-1 text-sm">
+                              <div className="flex justify-between gap-2">
+                                <dt>Status</dt>
+                                <dd>{facility.status ?? "—"}</dd>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <dt>Yearly volume</dt>
+                                <dd>
+                                  {facility.yearlyVolume?.toLocaleString() ??
+                                    "—"}
+                                </dd>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <dt>TAT SLA</dt>
+                                <dd>{facility.tatSla ?? "—"}</dd>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <dt>Created</dt>
+                                <dd>{formatDate(facility.createdAt)}</dd>
+                              </div>
+                              <div className="flex justify-between gap-2">
+                                <dt>Updated</dt>
+                                <dd>{formatDate(facility.updatedAt)}</dd>
+                              </div>
+                            </dl>
                           </div>
-                          <div className="flex justify-between gap-2">
-                            <dt>Yearly volume</dt>
-                            <dd>{facility.yearlyVolume?.toLocaleString() ?? "—"}</dd>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <dt>TAT SLA</dt>
-                            <dd>{facility.tatSla ?? "—"}</dd>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <dt>Created</dt>
-                            <dd>{formatDate(facility.createdAt)}</dd>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <dt>Updated</dt>
-                            <dd>{formatDate(facility.updatedAt)}</dd>
-                          </div>
-                        </dl>
-                      </div>
 
-                      <div className="rounded-md border p-3 lg:col-span-2">
-                        <p className="text-muted-foreground text-xs uppercase">Contact directory</p>
-                        {contacts.length === 0 ? (
-                          <p className="text-muted-foreground mt-2 text-sm">No contacts linked.</p>
-                        ) : (
-                          <div className="mt-2 overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                              <thead className="text-muted-foreground text-xs uppercase">
-                                <tr>
-                                  <th className="py-1 pr-3">name</th>
-                                  <th className="py-1 pr-3">title</th>
-                                  <th className="py-1 pr-3">email</th>
-                                  <th className="py-1 pr-3">phone</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {contacts.map((contact) => (
-                                  <tr key={contact.id} className="border-t">
-                                    <td className="py-1 pr-3">
-                                      {contact.name}
-                                      {contact.isPrimary ? (
-                                        <Badge className="ml-2" variant="outline">
-                                          Primary
-                                        </Badge>
-                                      ) : null}
-                                    </td>
-                                    <td className="py-1 pr-3">{contact.title ?? "—"}</td>
-                                    <td className="py-1 pr-3">{contact.email ?? "—"}</td>
-                                    <td className="py-1 pr-3">{contact.phone ?? "—"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="rounded-md border p-3">
-                        <p className="text-muted-foreground text-xs uppercase">Operational profile</p>
-                        <dl className="mt-2 space-y-2 text-sm">
-                          <div>
-                            <dt className="text-muted-foreground">Address</dt>
-                            <dd>{facility.address ?? "—"}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-muted-foreground">Modalities</dt>
-                            <dd>{facility.modalities?.join(", ") ?? "—"}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-muted-foreground">Linked providers</dt>
-                            <dd>{providerCount}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-muted-foreground">PFC workflows</dt>
-                            <dd>{workflowCount}</dd>
-                          </div>
-                        </dl>
-                      </div>
-
-                      <div className="rounded-md border p-3 lg:col-span-4">
-                        <p className="text-muted-foreground text-xs uppercase">Linked PFC records</p>
-                        {credentials.length === 0 ? (
-                          <p className="text-muted-foreground mt-2 text-sm">No linked PFC records.</p>
-                        ) : (
-                          <div className="mt-2 overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                              <thead className="text-muted-foreground text-xs uppercase">
-                                <tr>
-                                  <th className="py-1 pr-3">provider</th>
-                                  <th className="py-1 pr-3">facility type</th>
-                                  <th className="py-1 pr-3">priority</th>
-                                  <th className="py-1 pr-3">decision</th>
-                                  <th className="py-1 pr-3">updated</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {credentials.map((credential) => {
-                                  const provider = credential.providerId
-                                    ? providersById.get(credential.providerId)
-                                    : null;
-                                  const providerName = provider
-                                    ? [provider.firstName, provider.middleName, provider.lastName]
-                                        .filter(Boolean)
-                                        .join(" ") ?? "Unnamed Provider"
-                                    : "Unlinked";
-                                  const displayProviderName = provider?.degree
-                                    ? `${providerName}, ${provider.degree}`
-                                    : providerName;
-
-                                  return (
-                                    <tr key={credential.id} className="border-t">
-                                      <td className="py-1 pr-3">{displayProviderName}</td>
-                                      <td className="py-1 pr-3">{credential.facilityType ?? "—"}</td>
-                                      <td className="py-1 pr-3">{credential.priority ?? "—"}</td>
-                                      <td className="py-1 pr-3">{credential.decision ?? "—"}</td>
-                                      <td className="py-1 pr-3">{formatDate(credential.updatedAt)}</td>
+                          <div className="rounded-md border p-3 lg:col-span-2">
+                            <p className="text-muted-foreground text-xs uppercase">
+                              Contact directory
+                            </p>
+                            {contacts.length === 0 ? (
+                              <p className="text-muted-foreground mt-2 text-sm">
+                                No contacts linked.
+                              </p>
+                            ) : (
+                              <div className="mt-2 overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                  <thead className="text-muted-foreground text-xs uppercase">
+                                    <tr>
+                                      <th className="py-1 pr-3">name</th>
+                                      <th className="py-1 pr-3">title</th>
+                                      <th className="py-1 pr-3">email</th>
+                                      <th className="py-1 pr-3">phone</th>
                                     </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                                  </thead>
+                                  <tbody>
+                                    {contacts.map((contact) => (
+                                      <tr key={contact.id} className="border-t">
+                                        <td className="py-1 pr-3">
+                                          {contact.name}
+                                          {contact.isPrimary ? (
+                                            <Badge
+                                              className="ml-2"
+                                              variant="outline"
+                                            >
+                                              Primary
+                                            </Badge>
+                                          ) : null}
+                                        </td>
+                                        <td className="py-1 pr-3">
+                                          {contact.title ?? "—"}
+                                        </td>
+                                        <td className="py-1 pr-3">
+                                          {contact.email ?? "—"}
+                                        </td>
+                                        <td className="py-1 pr-3">
+                                          {contact.phone ?? "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  </details>
-                </section>
-              );
-            })}
 
-            <ProvidersAutoAdvance
-              enabled={hasMoreFacilities}
-              nextHref={createLimitHref(
-                Math.min(requestedLimit + pageSize, totalVisibleCount),
-              )}
-              rootSelector=".facilities-scroll-viewport"
-            />
+                          <div className="rounded-md border p-3">
+                            <p className="text-muted-foreground text-xs uppercase">
+                              Operational profile
+                            </p>
+                            <dl className="mt-2 space-y-2 text-sm">
+                              <div>
+                                <dt className="text-muted-foreground">
+                                  Address
+                                </dt>
+                                <dd>{facility.address ?? "—"}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">
+                                  Modalities
+                                </dt>
+                                <dd>
+                                  {facility.modalities?.join(", ") ?? "—"}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">
+                                  Linked providers
+                                </dt>
+                                <dd>{providerCount}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-muted-foreground">
+                                  PFC workflows
+                                </dt>
+                                <dd>{workflowCount}</dd>
+                              </div>
+                            </dl>
+                          </div>
 
-            <div className="border-t pt-3 text-sm">
-              <p className="text-muted-foreground">
-                Showing {facilityCards.length} of {totalVisibleCount} facilities
-              </p>
-            </div>
-          </div>
-        </VirtualScrollContainer>
+                          <div className="rounded-md border p-3 lg:col-span-4">
+                            <p className="text-muted-foreground text-xs uppercase">
+                              Linked PFC records
+                            </p>
+                            {credentials.length === 0 ? (
+                              <p className="text-muted-foreground mt-2 text-sm">
+                                No linked PFC records.
+                              </p>
+                            ) : (
+                              <div className="mt-2 overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                  <thead className="text-muted-foreground text-xs uppercase">
+                                    <tr>
+                                      <th className="py-1 pr-3">provider</th>
+                                      <th className="py-1 pr-3">
+                                        facility type
+                                      </th>
+                                      <th className="py-1 pr-3">priority</th>
+                                      <th className="py-1 pr-3">decision</th>
+                                      <th className="py-1 pr-3">updated</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {credentials.map((credential) => {
+                                      const provider = credential.providerId
+                                        ? providersById.get(
+                                            credential.providerId,
+                                          )
+                                        : null;
+                                      const providerName = provider
+                                        ? ([
+                                            provider.firstName,
+                                            provider.middleName,
+                                            provider.lastName,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(" ") ?? "Unnamed Provider")
+                                        : "Unlinked";
+                                      const displayProviderName =
+                                        provider?.degree
+                                          ? `${providerName}, ${provider.degree}`
+                                          : providerName;
+
+                                      return (
+                                        <tr
+                                          key={credential.id}
+                                          className="border-t"
+                                        >
+                                          <td className="py-1 pr-3">
+                                            {displayProviderName}
+                                          </td>
+                                          <td className="py-1 pr-3">
+                                            {credential.facilityType ?? "—"}
+                                          </td>
+                                          <td className="py-1 pr-3">
+                                            {credential.priority ?? "—"}
+                                          </td>
+                                          <td className="py-1 pr-3">
+                                            {credential.decision ?? "—"}
+                                          </td>
+                                          <td className="py-1 pr-3">
+                                            {formatDate(credential.updatedAt)}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </details>
+                    </section>
+                  );
+                })}
+
+                <ProvidersAutoAdvance
+                  enabled={hasMoreFacilities}
+                  nextHref={createLimitHref(
+                    Math.min(requestedLimit + pageSize, totalVisibleCount),
+                  )}
+                  rootSelector=".facilities-scroll-viewport"
+                />
+
+                <div className="border-t pt-3 text-sm">
+                  <p className="text-muted-foreground">
+                    Showing {facilityCards.length} of {totalVisibleCount}{" "}
+                    facilities
+                  </p>
+                </div>
+              </div>
+            </VirtualScrollContainer>
           )}
         </FacilitiesListOverlay>
       </div>

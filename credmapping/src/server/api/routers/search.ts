@@ -6,6 +6,17 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 const trimAndNormalize = (value: string) => value.trim().replace(/\s+/g, " ");
 
+const getProxySearchCondition = (query: string) => {
+  const normalized = query.trim().toLowerCase();
+  if (["proxy", "proxied", "true", "yes"].includes(normalized)) {
+    return eq(facilities.proxy, true);
+  }
+  if (["not proxy", "not proxied", "false", "no"].includes(normalized)) {
+    return eq(facilities.proxy, false);
+  }
+  return undefined;
+};
+
 const buildProviderName = (provider: {
   firstName: string | null;
   middleName: string | null;
@@ -75,7 +86,7 @@ export const searchRouter = createTRPCRouter({
               ilike(facilities.state, likeQuery),
               ilike(facilities.email, likeQuery),
               ilike(facilities.address, likeQuery),
-              ilike(facilities.proxy, likeQuery),
+              getProxySearchCondition(query),
             ),
           )
           .limit(input.limitPerType),
@@ -158,9 +169,8 @@ export const searchRouter = createTRPCRouter({
               degree: log.providerDegree,
             }),
             subtitle:
-              [log.subject, log.commType]
-                .filter(Boolean)
-                .join(" • ") || "View communication logs",
+              [log.subject, log.commType].filter(Boolean).join(" • ") ||
+              "View communication logs",
             href: `/comm-logs?mode=provider&id=${log.relatedId}`,
           })),
         facilityCommLogs: facilityCommLogRows
@@ -169,9 +179,8 @@ export const searchRouter = createTRPCRouter({
             id: log.id,
             name: log.facilityName?.trim() ?? "Unnamed Facility",
             subtitle:
-              [log.subject, log.commType]
-                .filter(Boolean)
-                .join(" • ") || "View communication logs",
+              [log.subject, log.commType].filter(Boolean).join(" • ") ||
+              "View communication logs",
             href: `/comm-logs?mode=facility&id=${log.relatedId}`,
           })),
       };

@@ -106,23 +106,6 @@ function isManagePhasesWorkflowType(
   ].includes(workflowType);
 }
 
-function sortRows(rows: WorkflowListRow[], sortBy: WorkflowSortMode) {
-  const getTimestamp = (value: string | Date | null | undefined) =>
-    value ? new Date(value).getTime() : 0;
-
-  return [...rows].sort((a, b) => {
-    const aStarted = getTimestamp(a.startDate);
-    const bStarted = getTimestamp(b.startDate);
-    const aAssigned = getTimestamp(a.createdAt);
-    const bAssigned = getTimestamp(b.createdAt);
-
-    if (sortBy === "date_started_asc") return aStarted - bStarted;
-    if (sortBy === "date_started_desc") return bStarted - aStarted;
-    if (sortBy === "date_assigned_asc") return aAssigned - bAssigned;
-    return bAssigned - aAssigned;
-  });
-}
-
 function getRelatedWorkflowLabel(row: WorkflowListRow) {
   const typeLabel = getWorkflowTypeLabel(String(row.workflowType));
 
@@ -397,7 +380,7 @@ function GroupedWorkflowsDetailPane({
                 <AccordionItem
                   key={relatedGroup.key}
                   value={relatedGroup.key}
-                  className="bg-muted/20 rounded-md border last:border-b px-3"
+                  className="bg-muted/20 rounded-md border px-3 last:border-b"
                 >
                   <AccordionTrigger className="py-3 hover:no-underline">
                     <div className="min-w-0 text-left">

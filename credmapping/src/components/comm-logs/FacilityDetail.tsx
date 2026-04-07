@@ -192,11 +192,11 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
           <div className="min-w-0 flex-1">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <h2 className="truncate text-2xl font-bold text-foreground">
+                <h2 className="text-foreground truncate text-2xl font-bold">
                   {facility.name}
                 </h2>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 {facility.email ?? "No facility email listed"}
               </p>
             </div>
@@ -220,23 +220,23 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
               <p className="text-muted-foreground">Total Activity:</p>
-              <p className="font-medium text-foreground">
+              <p className="text-foreground font-medium">
                 {summary?.totalLogs ?? 0} Logs
               </p>
             </div>
           </div>
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
-              <p className="text-muted-foreground">Proxy Entity:</p>
-              <p className="truncate font-medium text-foreground">
-                {contactData?.facilityInfo?.proxy ?? "—"}
+              <p className="text-muted-foreground">Proxy:</p>
+              <p className="text-foreground truncate font-medium">
+                {contactData?.facilityInfo?.proxy ? "Yes" : "No"}
               </p>
             </div>
           </div>
           <div className="min-w-0 xl:justify-self-end">
             <div className="flex items-baseline gap-1.5 xl:justify-end">
               <p className="text-muted-foreground">Status:</p>
-              <p className="font-medium text-foreground">
+              <p className="text-foreground font-medium">
                 {facility.status ?? "Unknown"}
               </p>
             </div>
@@ -269,9 +269,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                   : "text-muted-foreground hover:bg-muted/30 hover:text-foreground"
               }`}
             >
-           
-                {tab.label}
-          
+              {tab.label}
             </button>
           );
         })}
@@ -380,7 +378,10 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                 )}
               </div>
             </div>
-            <ScrollIndicatorContainer className="min-h-0 flex-1" viewportClassName="px-6 py-4">
+            <ScrollIndicatorContainer
+              className="min-h-0 flex-1"
+              viewportClassName="px-6 py-4"
+            >
               <CommLogFeed
                 logs={filteredLogs}
                 isLoading={logsLoading}
@@ -411,21 +412,21 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                   {contactData.contacts.map((contact) => (
                     <div
                       key={contact.id}
-                      className="rounded-lg border border-border bg-secondary/20 p-4"
+                      className="border-border bg-secondary/20 rounded-lg border p-4"
                     >
-                      <p className="mb-2 text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+                      <p className="text-muted-foreground mb-2 text-[10px] font-bold tracking-widest uppercase">
                         {contact.isPrimary
                           ? "Primary Contact"
                           : (contact.title ?? "Facility Contact")}
                       </p>
-                      <p className="text-lg font-medium text-foreground">
+                      <p className="text-foreground text-lg font-medium">
                         {contact.name}
                       </p>
                       {contact.email && (
                         <p className="text-primary text-sm">{contact.email}</p>
                       )}
                       {contact.phone && (
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="text-muted-foreground mt-1 text-sm">
                           {contact.phone}
                         </p>
                       )}
@@ -435,11 +436,11 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
               ) : (
                 <StandardEmptyState message="No facility contacts recorded yet." />
               )}
-              <div className="bg-muted/10 rounded-lg border border-border p-6">
-                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold tracking-widest text-muted-foreground uppercase">
+              <div className="bg-muted/10 border-border rounded-lg border p-6">
+                <h4 className="text-muted-foreground mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
                   <Info className="h-4 w-4" /> Physical Address
                 </h4>
-                <p className="leading-relaxed text-foreground">
+                <p className="text-foreground leading-relaxed">
                   {contactData?.facilityInfo?.address ?? "No address recorded"}
                 </p>
               </div>
@@ -448,7 +449,10 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
         )}
       </div>
 
-      <Dialog open={isModalOpen} onOpenChange={(open) => !open && handleCloseModal()}>
+      <Dialog
+        open={isModalOpen}
+        onOpenChange={(open) => !open && handleCloseModal()}
+      >
         <ModalContent>
           <ModalHeader>
             <ModalTitle className="text-xl font-bold">
@@ -459,11 +463,11 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
           <form className="space-y-4" onSubmit={handleSubmitLog}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                <label className="text-muted-foreground text-xs font-bold tracking-wider uppercase">
                   Method
                 </label>
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                   onChange={(event) =>
                     setFormData({ ...formData, commType: event.target.value })
                   }
@@ -479,7 +483,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                <label className="text-muted-foreground text-xs font-bold tracking-wider uppercase">
                   Subject
                 </label>
                 <Input
@@ -494,7 +498,7 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <label className="text-muted-foreground text-xs font-bold tracking-wider uppercase">
                 Conversation Notes
               </label>
               <Textarea
@@ -515,7 +519,11 @@ export function FacilityDetail({ facilityId, facility }: FacilityDetailProps) {
                   Cancel
                 </Button>
               </DialogClose>
-              <Button className="min-w-25" disabled={isSubmitting} type="submit">
+              <Button
+                className="min-w-25"
+                disabled={isSubmitting}
+                type="submit"
+              >
                 {isSubmitting
                   ? "Saving..."
                   : editingLog

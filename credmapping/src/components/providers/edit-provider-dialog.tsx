@@ -60,17 +60,18 @@ function validateProviderField(
 ): Record<string, string> {
   const schema = providerFieldSchemas[field];
   if (!schema) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [field]: _, ...rest } = prev;
+    const { [field]: _omittedField, ...rest } = prev;
     return rest;
   }
   const result = schema.safeParse(value);
   if (result.success) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [field]: _, ...rest } = prev;
+    const { [field]: _omittedField, ...rest } = prev;
     return rest;
   }
-  return { ...prev, [field]: result.error.issues[0]?.message ?? "Invalid value." };
+  return {
+    ...prev,
+    [field]: result.error.issues[0]?.message ?? "Invalid value.",
+  };
 }
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -134,7 +135,8 @@ export function EditProviderDialog({ provider }: EditProviderDialogProps) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0];
-        if (key && !fieldErrors[String(key)]) fieldErrors[String(key)] = issue.message;
+        if (key && !fieldErrors[String(key)])
+          fieldErrors[String(key)] = issue.message;
       }
       setErrors(fieldErrors);
       return;
@@ -195,7 +197,9 @@ export function EditProviderDialog({ provider }: EditProviderDialogProps) {
                 placeholder="Jane"
                 className={errors.firstName ? "border-destructive" : ""}
               />
-              {errors.firstName && <p className="text-xs text-destructive">{errors.firstName}</p>}
+              {errors.firstName && (
+                <p className="text-destructive text-xs">{errors.firstName}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -215,7 +219,9 @@ export function EditProviderDialog({ provider }: EditProviderDialogProps) {
                 placeholder="Doe"
                 className={errors.lastName ? "border-destructive" : ""}
               />
-              {errors.lastName && <p className="text-xs text-destructive">{errors.lastName}</p>}
+              {errors.lastName && (
+                <p className="text-destructive text-xs">{errors.lastName}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -238,7 +244,9 @@ export function EditProviderDialog({ provider }: EditProviderDialogProps) {
                 type="email"
                 className={errors.email ? "border-destructive" : ""}
               />
-              {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+              {errors.email && (
+                <p className="text-destructive text-xs">{errors.email}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">

@@ -33,7 +33,7 @@ const facilitySchema = z.object({
       ]),
     ),
   address: z.string().optional(),
-  proxy: z.string().optional(),
+  proxy: z.boolean(),
   tatSla: z.string().optional(),
   status: z.enum(["Active", "Inactive", "In Progress"]),
   yearlyVolume: z.string().refine(
@@ -77,17 +77,18 @@ function validateFacilityField(
 ): Record<string, string> {
   const schema = facilityFieldSchemas[field];
   if (!schema) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [field]: _, ...rest } = prev;
+    const { [field]: _omittedField, ...rest } = prev;
     return rest;
   }
   const result = schema.safeParse(value);
   if (result.success) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [field]: _, ...rest } = prev;
+    const { [field]: _omittedField, ...rest } = prev;
     return rest;
   }
-  return { ...prev, [field]: result.error.issues[0]?.message ?? "Invalid value." };
+  return {
+    ...prev,
+    [field]: result.error.issues[0]?.message ?? "Invalid value.",
+  };
 }
 
 interface EditFacilityDialogProps {
@@ -95,7 +96,7 @@ interface EditFacilityDialogProps {
     id: string;
     name: string | null;
     state: string | null;
-    proxy: string | null;
+    proxy: boolean | null;
     status: "Active" | "Inactive" | "In Progress" | null;
     email: string | null;
     address: string | null;
@@ -110,7 +111,7 @@ type FacilityForm = {
   state: string;
   email: string;
   address: string;
-  proxy: string;
+  proxy: boolean;
   tatSla: string;
   status: "Active" | "Inactive" | "In Progress";
   yearlyVolume: string;
@@ -125,7 +126,7 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
     state: facility.state ?? "",
     email: facility.email ?? "",
     address: facility.address ?? "",
-    proxy: facility.proxy ?? "",
+    proxy: facility.proxy ?? false,
     tatSla: facility.tatSla ?? "",
     status: facility.status ?? "Active",
     yearlyVolume: facility.yearlyVolume?.toString() ?? "",
@@ -143,7 +144,7 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
     onError: (err: { message: string }) => toast.error(err.message),
   });
 
-  const updateField = (field: keyof FacilityForm, value: string) => {
+  const updateField = (field: keyof FacilityForm, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => validateFacilityField(field, value, prev));
   };
@@ -154,7 +155,8 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0];
-        if (key && !fieldErrors[String(key)]) fieldErrors[String(key)] = issue.message;
+        if (key && !fieldErrors[String(key)])
+          fieldErrors[String(key)] = issue.message;
       }
       setErrors(fieldErrors);
       return;
@@ -175,7 +177,7 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
       state: form.state.trim() || undefined,
       email: form.email.trim() || "",
       address: form.address.trim() || undefined,
-      proxy: form.proxy.trim() || undefined,
+      proxy: form.proxy,
       tatSla: form.tatSla.trim() || undefined,
       status: form.status,
       yearlyVolume: parsedVol,
@@ -194,7 +196,7 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
             state: facility.state ?? "",
             email: facility.email ?? "",
             address: facility.address ?? "",
-            proxy: facility.proxy ?? "",
+            proxy: facility.proxy ?? false,
             tatSla: facility.tatSla ?? "",
             status: facility.status ?? "Active",
             yearlyVolume: facility.yearlyVolume?.toString() ?? "",
@@ -225,7 +227,9 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
                 placeholder="Facility name"
                 className={errors.name ? "border-destructive" : ""}
               />
-              {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+              {errors.name && (
+                <p className="text-destructive text-xs">{errors.name}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -233,11 +237,15 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
               <Input
                 value={form.state}
                 maxLength={2}
-                onChange={(e) => updateField("state", e.target.value.toUpperCase())}
+                onChange={(e) =>
+                  updateField("state", e.target.value.toUpperCase())
+                }
                 placeholder="TX"
                 className={errors.state ? "border-destructive" : ""}
               />
-              {errors.state && <p className="text-xs text-destructive">{errors.state}</p>}
+              {errors.state && (
+                <p className="text-destructive text-xs">{errors.state}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -246,7 +254,10 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
                 className="bg-background h-9 w-full rounded-md border px-3 text-sm"
                 value={form.status}
                 onChange={(e) =>
-                  updateField("status", e.target.value as FacilityForm["status"])
+                  updateField(
+                    "status",
+                    e.target.value as FacilityForm["status"],
+                  )
                 }
               >
                 <option value="Active">Active</option>
@@ -256,12 +267,15 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Proxy</label>
-              <Input
-                value={form.proxy}
-                onChange={(e) => updateField("proxy", e.target.value)}
-                placeholder="Vesta"
-              />
+              <label className="flex h-9 items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={form.proxy}
+                  onChange={(e) => updateField("proxy", e.target.checked)}
+                  className="accent-primary"
+                />
+                Proxy
+              </label>
             </div>
 
             <div className="space-y-1.5">
@@ -273,7 +287,11 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
                 type="number"
                 className={errors.yearlyVolume ? "border-destructive" : ""}
               />
-              {errors.yearlyVolume && <p className="text-xs text-destructive">{errors.yearlyVolume}</p>}
+              {errors.yearlyVolume && (
+                <p className="text-destructive text-xs">
+                  {errors.yearlyVolume}
+                </p>
+              )}
             </div>
           </div>
 
@@ -286,7 +304,9 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
               type="email"
               className={errors.email ? "border-destructive" : ""}
             />
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+            {errors.email && (
+              <p className="text-destructive text-xs">{errors.email}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -309,7 +329,9 @@ export function EditFacilityDialog({ facility }: EditFacilityDialogProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Modalities (comma-separated)</label>
+            <label className="text-sm font-medium">
+              Modalities (comma-separated)
+            </label>
             <Input
               value={form.modalities}
               onChange={(e) => updateField("modalities", e.target.value)}
