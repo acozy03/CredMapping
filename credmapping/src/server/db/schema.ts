@@ -384,6 +384,18 @@ export const providerStateLicenses = pgTable("provider_state_licenses", {
     .$onUpdate(() => new Date()),
 });
 
+export const facilityDocuments = pgTable("facility_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  facilityId: uuid("facility_id")
+    .notNull()
+    .references(() => facilities.id),
+  acceptableDocuments: jsonb("acceptable_documents"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 export const nowSql = sql`now()`;
 
 export const agentsAuthenticatedAll = createAuthenticatedAllPolicy(
@@ -439,6 +451,8 @@ export const psvAuthenticatedAll = createAuthenticatedAllPolicy(
 export const missingDocsAuthenticated = createAuthenticatedAllPolicy(
   "missing_docs_authenticated_all",
 ).link(missingDocs);
+
+export const facilityDocumentsAuthenticatedAll = createAuthenticatedAllPolicy("facility_documents_authenticated_all").link(facilityDocuments);
 
 export const commLogsSelectAdmin = pgPolicy("comm_logs_admin_all", {
   for: "all",
