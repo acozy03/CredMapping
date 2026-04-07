@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
+import { type RouterOutputs } from "~/trpc/react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -93,6 +94,7 @@ import {
   isOverdue,
   toStartOfDay,
   WORKFLOW_TYPE_LABELS,
+  type GroupByMode,
   type WorkflowSortMode,
 } from "~/components/workflows/workflow-utils";
 
@@ -108,6 +110,8 @@ type WorkflowPhaseInput = {
 type WorkflowPhaseDraft = WorkflowPhaseInput & {
   clientKey: string;
 };
+
+type WorkflowListRow = RouterOutputs["workflows"]["list"][number];
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 
@@ -139,8 +143,7 @@ const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
     "border-pink-500/40 shadow-[inset_0_0_0_1px_rgba(236,72,153,0.12)]",
 };
 
-const WORKFLOW_BATCH_SIZE = 8;
-const WORKFLOW_FETCH_LIMIT = 1000;
+const WORKFLOW_GROUP_PAGE_SIZE = 25;
 
 const EMPTY_PHASES: never[] = [];
 
@@ -161,6 +164,12 @@ type WorkflowsFiltersSheetProps = {
   sortBy: WorkflowSortMode;
   onSortByChange: (value: WorkflowSortMode) => void;
   agentList: Array<{ id: string | number; name: string | null }>;
+};
+
+type WorkflowQueryCacheEntry = {
+  offset: number;
+  rows: WorkflowListRow[];
+  hasMore: boolean;
 };
 
 function WorkflowsFiltersSheet({
@@ -3097,11 +3106,14 @@ export default function WorkflowsClient() {
 
   const [workflowType, setWorkflowType] = useState<string>("all");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [groupBy, setGroupBy] = useState<GroupByMode>("provider");
   const [sortBy, setSortBy] = useState<WorkflowSortMode>("date_assigned_desc");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState<WorkflowViewMode>("list");
-  const [visibleCount, setVisibleCount] = useState(WORKFLOW_BATCH_SIZE);
+  const [workflowQueryCache, setWorkflowQueryCache] = useState<
+    Record<string, WorkflowQueryCacheEntry>
+  >({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [phaseManagerGroup, setPhaseManagerGroup] = useState<{
@@ -3115,30 +3127,128 @@ export default function WorkflowsClient() {
     contextLabel: string;
   } | null>(null);
   const backendSearch = debouncedSearch.trim() || undefined;
+  const filtersActive =
+    Boolean(search) ||
+    workflowType !== "all" ||
+    agentFilter !== "all";
+
+  const queryKey = useMemo(
+    () =>
+      JSON.stringify({
+        workflowType,
+        agentFilter,
+        search: backendSearch ?? "",
+      }),
+    [workflowType, agentFilter, backendSearch],
+  );
+
+  const activeQueryState = workflowQueryCache[queryKey] ?? {
+    offset: 0,
+    rows: [],
+    hasMore: true,
+  };
+
+  const listInput = {
+    workflowType: workflowType as
+      | "all"
+      | "pfc"
+      | "state_licenses"
+      | "prelive_pipeline"
+      | "provider_vesta_privileges",
+    assignedToMe: agentFilter === "__me__",
+    assignedToAgent:
+      agentFilter !== "all" && agentFilter !== "__me__"
+        ? agentFilter
+        : undefined,
+    search: backendSearch,
+    limit: WORKFLOW_GROUP_PAGE_SIZE,
+    offset: activeQueryState.offset,
+  };
 
   const {
-    data: workflows = [],
+    data: workflowsPage = [],
     isLoading,
     isFetching,
   } = api.workflows.list.useQuery(
+    listInput,
     {
-      workflowType: workflowType as
-        | "all"
-        | "pfc"
-        | "state_licenses"
-        | "prelive_pipeline"
-        | "provider_vesta_privileges",
-      assignedToMe: agentFilter === "__me__",
-      assignedToAgent:
-        agentFilter !== "all" && agentFilter !== "__me__"
-          ? agentFilter
-          : undefined,
-      search: backendSearch,
-      limit: WORKFLOW_FETCH_LIMIT,
-      offset: 0,
+      refetchOnWindowFocus: false,
+      placeholderData: (previous) => previous,
     },
-    { refetchOnWindowFocus: false },
   );
+
+  useEffect(() => {
+    if (isFetching && workflowsPage.length === 0) return;
+
+    const groupCountOnPage = new Set(
+      workflowsPage.map((row) => `${row.workflowType}:${row.relatedId}`),
+    ).size;
+
+    const nextHasMore = groupCountOnPage === WORKFLOW_GROUP_PAGE_SIZE;
+
+    setWorkflowQueryCache((currentCache) => {
+      const existingEntry = currentCache[queryKey] ?? {
+        offset: 0,
+        rows: [],
+        hasMore: true,
+      };
+
+      if (existingEntry.offset === 0) {
+        const currentRows = existingEntry.rows;
+        const sameLength = currentRows.length === workflowsPage.length;
+        const sameFirstId = currentRows[0]?.id === workflowsPage[0]?.id;
+
+        if (sameLength && sameFirstId && existingEntry.hasMore === nextHasMore) {
+          return currentCache;
+        }
+
+        return {
+          ...currentCache,
+          [queryKey]: {
+            offset: existingEntry.offset,
+            rows: workflowsPage,
+            hasMore: nextHasMore,
+          },
+        };
+      }
+
+      const existingById = new Map(existingEntry.rows.map((row) => [row.id, row]));
+      let hasChanges = false;
+
+      for (const row of workflowsPage) {
+        if (existingById.get(row.id) !== row) {
+          existingById.set(row.id, row);
+          hasChanges = true;
+        }
+      }
+
+      const seen = new Set(existingEntry.rows.map((row) => row.id));
+      const mergedExistingRows = existingEntry.rows
+        .map((row) => existingById.get(row.id))
+        .filter((row): row is WorkflowListRow => Boolean(row));
+      const appendedRows = workflowsPage.filter((row) => !seen.has(row.id));
+      const mergedRows = [...mergedExistingRows, ...appendedRows];
+
+      const rowsChanged =
+        mergedRows.length !== existingEntry.rows.length ||
+        mergedRows.some((row, index) => row !== existingEntry.rows[index]);
+
+      if (!hasChanges && !rowsChanged && existingEntry.hasMore === nextHasMore) {
+        return currentCache;
+      }
+
+      return {
+        ...currentCache,
+        [queryKey]: {
+          offset: existingEntry.offset,
+          rows: mergedRows,
+          hasMore: nextHasMore,
+        },
+      };
+    });
+  }, [queryKey, workflowsPage, isFetching]);
+
+  const workflows = activeQueryState.rows ?? EMPTY_PHASES;
 
   const { data: agentList = [] } = api.workflows.listAgents.useQuery();
   const { data: dbStatuses = [] } = api.workflows.distinctStatuses.useQuery({
@@ -3275,22 +3385,35 @@ export default function WorkflowsClient() {
   );
 
   useEffect(() => {
-    setVisibleCount(WORKFLOW_BATCH_SIZE);
-  }, [workflowType, agentFilter, debouncedSearch, sortBy]);
-
-  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedSearch(search);
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const visibleGroups = useMemo(
-    () => filteredWorkflows.slice(0, visibleCount),
-    [filteredWorkflows, visibleCount],
-  );
+  const visibleGroups = filteredWorkflows;
 
-  const hasMoreGroups = visibleGroups.length < filteredWorkflows.length;
+  const hasMoreGroups = activeQueryState.hasMore;
+
+  const handleLoadMoreGroups = () => {
+    if (!activeQueryState.hasMore || isFetching) return;
+
+    setWorkflowQueryCache((currentCache) => {
+      const existingEntry = currentCache[queryKey] ?? {
+        offset: 0,
+        rows: [],
+        hasMore: true,
+      };
+
+      return {
+        ...currentCache,
+        [queryKey]: {
+          ...existingEntry,
+          offset: existingEntry.offset + WORKFLOW_GROUP_PAGE_SIZE,
+        },
+      };
+    });
+  };
 
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
@@ -3313,6 +3436,36 @@ export default function WorkflowsClient() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+
+        {viewMode === "grouped" && (
+          <div className="flex items-center gap-2">
+            <Select
+              value={groupBy}
+              onValueChange={(value) => setGroupBy(value as GroupByMode)}
+            >
+              <SelectTrigger className="h-10 min-w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="provider">By Provider</SelectItem>
+                <SelectItem value="facility">By Facility</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {hasMoreGroups && (
+              <Button
+                variant="outline"
+                className="h-10"
+                onClick={handleLoadMoreGroups}
+                disabled={isFetching}
+              >
+                {isFetching && activeQueryState.offset > 0
+                  ? "Loading..."
+                  : `Load more ${groupBy === "provider" ? "providers" : "facilities"}`}
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end">
           <WorkflowsFiltersSheet
@@ -3352,7 +3505,9 @@ export default function WorkflowsClient() {
       ) : viewMode === "grouped" ? (
         <GroupedWorkflowsView
           rows={filteredPhases}
+          groupBy={groupBy}
           sortBy={sortBy}
+          filtersActive={filtersActive}
           claimPending={selfAssignMutation.isPending}
           onOpenWorkflow={setSelectedId}
           onClaimWorkflow={(id) => selfAssignMutation.mutate({ id })}
@@ -3594,15 +3749,8 @@ export default function WorkflowsClient() {
             })}
             <WorkflowAutoAdvance
               enabled={hasMoreGroups}
-              onAdvance={() => {
-                setVisibleCount((current) =>
-                  Math.min(
-                    current + WORKFLOW_BATCH_SIZE,
-                    filteredWorkflows.length,
-                  ),
-                );
-              }}
-              resetKey={`${visibleCount}-${filteredWorkflows.length}`}
+              onAdvance={handleLoadMoreGroups}
+              resetKey={`${activeQueryState.offset}-${filteredWorkflows.length}`}
               rootSelector=".workflows-scroll-viewport"
             />
           </div>

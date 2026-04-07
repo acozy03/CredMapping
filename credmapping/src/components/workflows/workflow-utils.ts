@@ -6,6 +6,7 @@ export type WorkflowSortMode =
   | "date_started_desc"
   | "date_started_asc";
 
+export type GroupByMode = "provider" | "facility";
 
 export const WORKFLOW_TYPE_LABELS: Record<string, string> = {
   pfc: "PFC",
