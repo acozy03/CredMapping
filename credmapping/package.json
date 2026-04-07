@@ -5,19 +5,27 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "check": "next lint && tsc --noEmit",
+    "check": "pnpm lint && pnpm typecheck",
     "db:generate": "drizzle-kit generate && tsx src/server/db/session_cleanup.ts",
     "db:migrate": "drizzle-kit migrate && tsx src/server/db/session_cleanup.ts",
     "db:push": "drizzle-kit push && tsx src/server/db/session_cleanup.ts",
     "db:studio": "drizzle-kit studio && tsx src/server/db/session_cleanup.ts",
     "dev": "next dev --turbo",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
-    "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
+    "format:check": "prettier --check . --cache",
+    "format:write": "prettier --write . --cache",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix --max-warnings=0",
     "preview": "next build && next start",
+    "prepare": "cd .. && husky credmapping/.husky",
     "start": "next start",
     "typecheck": "tsc --noEmit"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": [
+      "prettier --write --cache",
+      "eslint --fix --max-warnings=0"
+    ],
+    "*.{css,html,json,md,mdx,scss,yaml,yml}": "prettier --write --cache"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -55,6 +63,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.0.15",
     "@types/node": "^20.14.10",
@@ -65,7 +75,10 @@
     "drizzle-orm": "^0.45.1",
     "eslint": "^9.23.0",
     "eslint-config-next": "^15.2.3",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-drizzle": "^0.2.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "postcss": "^8.5.3",
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.6.11",

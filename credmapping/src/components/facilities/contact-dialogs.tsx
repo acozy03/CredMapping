@@ -67,17 +67,18 @@ function validateContactField(
 ): Record<string, string> {
   const schema = contactFieldSchemas[field];
   if (!schema) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [field]: _, ...rest } = prev;
+    const { [field]: _omittedField, ...rest } = prev;
     return rest;
   }
   const result = schema.safeParse(value);
   if (result.success) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [field]: _, ...rest } = prev;
+    const { [field]: _omittedField, ...rest } = prev;
     return rest;
   }
-  return { ...prev, [field]: result.error.issues[0]?.message ?? "Invalid value." };
+  return {
+    ...prev,
+    [field]: result.error.issues[0]?.message ?? "Invalid value.",
+  };
 }
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -127,7 +128,8 @@ export function AddContactDialog({ facilityId }: { facilityId: string }) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0];
-        if (key && !fieldErrors[String(key)]) fieldErrors[String(key)] = issue.message;
+        if (key && !fieldErrors[String(key)])
+          fieldErrors[String(key)] = issue.message;
       }
       setErrors(fieldErrors);
       return;
@@ -148,7 +150,10 @@ export function AddContactDialog({ facilityId }: { facilityId: string }) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) { setForm(blankContact); setErrors({}); }
+        if (!next) {
+          setForm(blankContact);
+          setErrors({});
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -163,26 +168,54 @@ export function AddContactDialog({ facilityId }: { facilityId: string }) {
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Name *</label>
-            <Input value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="John Doe" className={errors.name ? "border-destructive" : ""} />
-            {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+            <Input
+              value={form.name}
+              onChange={(e) => update("name", e.target.value)}
+              placeholder="John Doe"
+              className={errors.name ? "border-destructive" : ""}
+            />
+            {errors.name && (
+              <p className="text-destructive text-xs">{errors.name}</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Title</label>
-              <Input value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="Credentialing Coord." />
+              <Input
+                value={form.title}
+                onChange={(e) => update("title", e.target.value)}
+                placeholder="Credentialing Coord."
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Phone</label>
-              <Input value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="(555) 123-4567" />
+              <Input
+                value={form.phone}
+                onChange={(e) => update("phone", e.target.value)}
+                placeholder="(555) 123-4567"
+              />
             </div>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Email</label>
-            <Input value={form.email} onChange={(e) => update("email", e.target.value)} placeholder="contact@facility.com" type="email" className={errors.email ? "border-destructive" : ""} />
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+            <Input
+              value={form.email}
+              onChange={(e) => update("email", e.target.value)}
+              placeholder="contact@facility.com"
+              type="email"
+              className={errors.email ? "border-destructive" : ""}
+            />
+            {errors.email && (
+              <p className="text-destructive text-xs">{errors.email}</p>
+            )}
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.isPrimary} onChange={(e) => update("isPrimary", e.target.checked)} className="accent-primary" />
+            <input
+              type="checkbox"
+              checked={form.isPrimary}
+              onChange={(e) => update("isPrimary", e.target.checked)}
+              className="accent-primary"
+            />
             Primary contact
           </label>
         </div>
@@ -244,7 +277,8 @@ export function EditContactDialog({ contact }: EditContactDialogProps) {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0];
-        if (key && !fieldErrors[String(key)]) fieldErrors[String(key)] = issue.message;
+        if (key && !fieldErrors[String(key)])
+          fieldErrors[String(key)] = issue.message;
       }
       setErrors(fieldErrors);
       return;
@@ -289,26 +323,50 @@ export function EditContactDialog({ contact }: EditContactDialogProps) {
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Name *</label>
-            <Input value={form.name} onChange={(e) => update("name", e.target.value)} className={errors.name ? "border-destructive" : ""} />
-            {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+            <Input
+              value={form.name}
+              onChange={(e) => update("name", e.target.value)}
+              className={errors.name ? "border-destructive" : ""}
+            />
+            {errors.name && (
+              <p className="text-destructive text-xs">{errors.name}</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Title</label>
-              <Input value={form.title} onChange={(e) => update("title", e.target.value)} />
+              <Input
+                value={form.title}
+                onChange={(e) => update("title", e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Phone</label>
-              <Input value={form.phone} onChange={(e) => update("phone", e.target.value)} />
+              <Input
+                value={form.phone}
+                onChange={(e) => update("phone", e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Email</label>
-            <Input value={form.email} onChange={(e) => update("email", e.target.value)} type="email" className={errors.email ? "border-destructive" : ""} />
-            {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+            <Input
+              value={form.email}
+              onChange={(e) => update("email", e.target.value)}
+              type="email"
+              className={errors.email ? "border-destructive" : ""}
+            />
+            {errors.email && (
+              <p className="text-destructive text-xs">{errors.email}</p>
+            )}
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.isPrimary} onChange={(e) => update("isPrimary", e.target.checked)} className="accent-primary" />
+            <input
+              type="checkbox"
+              checked={form.isPrimary}
+              onChange={(e) => update("isPrimary", e.target.checked)}
+              className="accent-primary"
+            />
             Primary contact
           </label>
         </div>
@@ -327,7 +385,13 @@ export function EditContactDialog({ contact }: EditContactDialogProps) {
 
 // ─── Delete Contact ─────────────────────────────────────────────
 
-export function DeleteContactButton({ contactId, contactName }: { contactId: string; contactName: string }) {
+export function DeleteContactButton({
+  contactId,
+  contactName,
+}: {
+  contactId: string;
+  contactName: string;
+}) {
   const router = useRouter();
 
   const mutation = api.facilities.deleteContact.useMutation({
@@ -341,7 +405,11 @@ export function DeleteContactButton({ contactId, contactName }: { contactId: str
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive hover:text-destructive h-7 w-7 p-0"
+        >
           <Trash2 className="size-3.5" />
         </Button>
       </AlertDialogTrigger>
@@ -349,7 +417,8 @@ export function DeleteContactButton({ contactId, contactName }: { contactId: str
         <AlertDialogHeader>
           <AlertDialogTitle>Remove contact?</AlertDialogTitle>
           <AlertDialogDescription>
-            Remove <strong>{contactName}</strong> from this facility? This cannot be undone.
+            Remove <strong>{contactName}</strong> from this facility? This
+            cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -395,7 +464,9 @@ export function TogglePrimaryButton({
       variant="ghost"
       className={`h-7 w-7 p-0 ${isPrimary ? "text-emerald-400" : "text-muted-foreground"}`}
       disabled={mutation.isPending}
-      onClick={() => { mutation.mutate({ id: contactId, isPrimary: !isPrimary }); }}
+      onClick={() => {
+        mutation.mutate({ id: contactId, isPrimary: !isPrimary });
+      }}
       title={isPrimary ? "Remove primary" : "Set as primary"}
     >
       <Star className={`size-3.5 ${isPrimary ? "fill-emerald-400" : ""}`} />

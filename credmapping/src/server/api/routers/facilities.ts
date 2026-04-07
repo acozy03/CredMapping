@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { eq, ilike, and, desc, asc, count, inArray, or } from "drizzle-orm";
 
-import { createTRPCRouter, protectedProcedure, superAdminProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  superAdminProcedure,
+} from "~/server/api/trpc";
 import {
   facilities,
   facilityContacts,
@@ -16,6 +20,17 @@ function toNull(value: string | undefined | null): string | null {
   if (!value) return null;
   return value;
 }
+
+const getProxySearchCondition = (search: string) => {
+  const normalized = search.trim().toLowerCase();
+  if (["proxy", "proxied", "true", "yes"].includes(normalized)) {
+    return eq(facilities.proxy, true);
+  }
+  if (["not proxy", "not proxied", "false", "no"].includes(normalized)) {
+    return eq(facilities.proxy, false);
+  }
+  return undefined;
+};
 
 export const facilitiesRouter = createTRPCRouter({
   // ────────────────────────────────────────────────────────────────
@@ -47,7 +62,7 @@ export const facilitiesRouter = createTRPCRouter({
             ilike(facilities.state, `%${search}%`),
             ilike(facilities.email, `%${search}%`),
             ilike(facilities.address, `%${search}%`),
-            ilike(facilities.proxy, `%${search}%`),
+            getProxySearchCondition(search),
           ),
         );
       }
@@ -150,7 +165,7 @@ export const facilitiesRouter = createTRPCRouter({
         state: z.string().trim().max(2).optional(),
         email: z.string().trim().email().optional().or(z.literal("")),
         address: z.string().trim().optional(),
-        proxy: z.string().trim().optional(),
+        proxy: z.boolean().nullable().optional(),
         status: z.enum(["Active", "Inactive", "In Progress"]).optional(),
         yearlyVolume: z.number().int().nonnegative().nullable().optional(),
         modalities: z.array(z.string()).nullable().optional(),
@@ -170,14 +185,20 @@ export const facilitiesRouter = createTRPCRouter({
 
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (updates.name !== undefined) setFields.name = updates.name;
-      if (updates.state !== undefined) setFields.state = toNull(updates.state.toUpperCase());
-      if (updates.email !== undefined) setFields.email = toNull(updates.email.toLowerCase());
-      if (updates.address !== undefined) setFields.address = toNull(updates.address);
-      if (updates.proxy !== undefined) setFields.proxy = toNull(updates.proxy);
+      if (updates.state !== undefined)
+        setFields.state = toNull(updates.state.toUpperCase());
+      if (updates.email !== undefined)
+        setFields.email = toNull(updates.email.toLowerCase());
+      if (updates.address !== undefined)
+        setFields.address = toNull(updates.address);
+      if (updates.proxy !== undefined) setFields.proxy = updates.proxy;
       if (updates.status !== undefined) setFields.status = updates.status;
-      if (updates.yearlyVolume !== undefined) setFields.yearlyVolume = updates.yearlyVolume;
-      if (updates.modalities !== undefined) setFields.modalities = updates.modalities;
-      if (updates.tatSla !== undefined) setFields.tatSla = toNull(updates.tatSla);
+      if (updates.yearlyVolume !== undefined)
+        setFields.yearlyVolume = updates.yearlyVolume;
+      if (updates.modalities !== undefined)
+        setFields.modalities = updates.modalities;
+      if (updates.tatSla !== undefined)
+        setFields.tatSla = toNull(updates.tatSla);
 
       const [updated] = await ctx.db
         .update(facilities)
@@ -402,9 +423,11 @@ export const facilitiesRouter = createTRPCRouter({
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (updates.name !== undefined) setFields.name = updates.name;
       if (updates.title !== undefined) setFields.title = toNull(updates.title);
-      if (updates.email !== undefined) setFields.email = toNull(updates.email?.toLowerCase());
+      if (updates.email !== undefined)
+        setFields.email = toNull(updates.email?.toLowerCase());
       if (updates.phone !== undefined) setFields.phone = toNull(updates.phone);
-      if (updates.isPrimary !== undefined) setFields.isPrimary = updates.isPrimary;
+      if (updates.isPrimary !== undefined)
+        setFields.isPrimary = updates.isPrimary;
 
       const [updated] = await ctx.db
         .update(facilityContacts)
@@ -555,13 +578,20 @@ export const facilitiesRouter = createTRPCRouter({
       if (!existing) throw new Error("Pre-live record not found.");
 
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
-      if (updates.priority !== undefined) setFields.priority = toNull(updates.priority);
-      if (updates.goLiveDate !== undefined) setFields.goLiveDate = toNull(updates.goLiveDate);
-      if (updates.boardMeetingDate !== undefined) setFields.boardMeetingDate = toNull(updates.boardMeetingDate);
-      if (updates.credentialingDueDate !== undefined) setFields.credentialingDueDate = toNull(updates.credentialingDueDate);
-      if (updates.tempsPossible !== undefined) setFields.tempsPossible = updates.tempsPossible;
-      if (updates.rolesNeeded !== undefined) setFields.rolesNeeded = updates.rolesNeeded;
-      if (updates.payorEnrollmentRequired !== undefined) setFields.payorEnrollmentRequired = updates.payorEnrollmentRequired;
+      if (updates.priority !== undefined)
+        setFields.priority = toNull(updates.priority);
+      if (updates.goLiveDate !== undefined)
+        setFields.goLiveDate = toNull(updates.goLiveDate);
+      if (updates.boardMeetingDate !== undefined)
+        setFields.boardMeetingDate = toNull(updates.boardMeetingDate);
+      if (updates.credentialingDueDate !== undefined)
+        setFields.credentialingDueDate = toNull(updates.credentialingDueDate);
+      if (updates.tempsPossible !== undefined)
+        setFields.tempsPossible = updates.tempsPossible;
+      if (updates.rolesNeeded !== undefined)
+        setFields.rolesNeeded = updates.rolesNeeded;
+      if (updates.payorEnrollmentRequired !== undefined)
+        setFields.payorEnrollmentRequired = updates.payorEnrollmentRequired;
 
       const [updated] = await ctx.db
         .update(facilityPreliveInfo)
@@ -625,7 +655,9 @@ export const facilitiesRouter = createTRPCRouter({
         decision: z.string().trim().optional(),
         notes: z.string().trim().optional(),
         priority: z.string().trim().optional(),
-        formSize: z.enum(["small", "medium", "large", "x-large", "online"]).optional(),
+        formSize: z
+          .enum(["small", "medium", "large", "x-large", "online"])
+          .optional(),
         applicationRequired: z.boolean().nullable().optional(),
       }),
     )
@@ -667,7 +699,10 @@ export const facilitiesRouter = createTRPCRouter({
         decision: z.string().trim().optional(),
         notes: z.string().trim().optional(),
         priority: z.string().trim().optional(),
-        formSize: z.enum(["small", "medium", "large", "x-large", "online"]).nullable().optional(),
+        formSize: z
+          .enum(["small", "medium", "large", "x-large", "online"])
+          .nullable()
+          .optional(),
         applicationRequired: z.boolean().nullable().optional(),
       }),
     )
@@ -683,13 +718,18 @@ export const facilitiesRouter = createTRPCRouter({
       if (!existing) throw new Error("PFC record not found.");
 
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
-      if (updates.facilityType !== undefined) setFields.facilityType = toNull(updates.facilityType);
-      if (updates.privileges !== undefined) setFields.privileges = toNull(updates.privileges);
-      if (updates.decision !== undefined) setFields.decision = toNull(updates.decision);
+      if (updates.facilityType !== undefined)
+        setFields.facilityType = toNull(updates.facilityType);
+      if (updates.privileges !== undefined)
+        setFields.privileges = toNull(updates.privileges);
+      if (updates.decision !== undefined)
+        setFields.decision = toNull(updates.decision);
       if (updates.notes !== undefined) setFields.notes = toNull(updates.notes);
-      if (updates.priority !== undefined) setFields.priority = toNull(updates.priority);
+      if (updates.priority !== undefined)
+        setFields.priority = toNull(updates.priority);
       if (updates.formSize !== undefined) setFields.formSize = updates.formSize;
-      if (updates.applicationRequired !== undefined) setFields.applicationRequired = updates.applicationRequired;
+      if (updates.applicationRequired !== undefined)
+        setFields.applicationRequired = updates.applicationRequired;
 
       const [updated] = await ctx.db
         .update(providerFacilityCredentials)

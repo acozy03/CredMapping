@@ -82,7 +82,7 @@ export interface FacilityData {
   id: string;
   name: string | null;
   state: string | null;
-  proxy: string | null;
+  proxy: boolean | null;
   status: "Active" | "Inactive" | "In Progress" | null;
   yearlyVolume: number | null;
   modalities: string[] | null;
@@ -141,7 +141,10 @@ const parseRoles = (value: unknown): string[] => {
   if (Array.isArray(value))
     return value.filter((entry): entry is string => typeof entry === "string");
   if (typeof value === "string")
-    return value.split(",").map((e) => e.trim()).filter(Boolean);
+    return value
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
   return [];
 };
 
@@ -153,7 +156,10 @@ const getDecisionTone = (decision: string | null) => {
 };
 
 /** Returns true if any workflow for this entity is not yet completed */
-const hasActiveWorkflows = (relatedId: string, workflows: NormalizedWorkflow[]) => {
+const hasActiveWorkflows = (
+  relatedId: string,
+  workflows: NormalizedWorkflow[],
+) => {
   const related = workflows.filter((w) => w.relatedId === relatedId);
   if (related.length === 0) return false;
   return related.some((w) => w.status?.toLowerCase() !== "completed");
@@ -186,10 +192,18 @@ export function FacilityProfileClient({
   // Drawer state
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [drawerTitle, setDrawerTitle] = React.useState("");
-  const [drawerDescription, setDrawerDescription] = React.useState<string | undefined>();
-  const [drawerDetails, setDrawerDetails] = React.useState<{ label: string; value: React.ReactNode }[]>([]);
-  const [drawerWorkflows, setDrawerWorkflows] = React.useState<WorkflowRow[]>([]);
-  const [drawerIncidents, setDrawerIncidents] = React.useState<IncidentRow[]>([]);
+  const [drawerDescription, setDrawerDescription] = React.useState<
+    string | undefined
+  >();
+  const [drawerDetails, setDrawerDetails] = React.useState<
+    { label: string; value: React.ReactNode }[]
+  >([]);
+  const [drawerWorkflows, setDrawerWorkflows] = React.useState<WorkflowRow[]>(
+    [],
+  );
+  const [drawerIncidents, setDrawerIncidents] = React.useState<IncidentRow[]>(
+    [],
+  );
 
   const openDrawer = (
     title: string,
@@ -242,7 +256,10 @@ export function FacilityProfileClient({
                   </span>
                 )}
                 {facility.email && (
-                  <a className="flex items-center gap-1 hover:underline" href={`mailto:${facility.email}`}>
+                  <a
+                    className="flex items-center gap-1 hover:underline"
+                    href={`mailto:${facility.email}`}
+                  >
                     <Mail className="size-3.5" /> {facility.email}
                   </a>
                 )}
@@ -252,15 +269,22 @@ export function FacilityProfileClient({
                   </span>
                 )}
               </div>
-              <span className="text-muted-foreground text-xs">Created {formatDate(facility.createdAt)}</span>
-              <span className="text-muted-foreground text-xs">· Updated {formatDate(facility.updatedAt)}</span>
+              <span className="text-muted-foreground text-xs">
+                Created {formatDate(facility.createdAt)}
+              </span>
+              <span className="text-muted-foreground text-xs">
+                · Updated {formatDate(facility.updatedAt)}
+              </span>
             </div>
             <Badge className={getStatusTone(facility.status)} variant="outline">
               {facility.status ?? "Unknown"}
             </Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Label htmlFor="active-toggle-f" className="text-xs text-muted-foreground cursor-pointer">
+            <Label
+              htmlFor="active-toggle-f"
+              className="text-muted-foreground cursor-pointer text-xs"
+            >
               Show only in-progress
             </Label>
             <Switch
@@ -276,8 +300,8 @@ export function FacilityProfileClient({
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {facility.proxy && <span>Proxy: {facility.proxy}</span>}
+        <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span>Proxy: {facility.proxy ? "Yes" : "No"}</span>
           {facility.yearlyVolume !== null && (
             <span>Volume: {facility.yearlyVolume?.toLocaleString()}</span>
           )}
@@ -299,7 +323,9 @@ export function FacilityProfileClient({
         }
       >
         {contactRows.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No contacts found for this facility.</p>
+          <p className="text-muted-foreground text-sm">
+            No contacts found for this facility.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -319,7 +345,10 @@ export function FacilityProfileClient({
                     <td className="py-1 pr-3">{contact.title ?? "-"}</td>
                     <td className="py-1 pr-3">
                       {contact.email ? (
-                        <a className="flex items-center gap-1 hover:underline" href={`mailto:${contact.email}`}>
+                        <a
+                          className="flex items-center gap-1 hover:underline"
+                          href={`mailto:${contact.email}`}
+                        >
                           <Mail className="size-3" /> {contact.email}
                         </a>
                       ) : (
@@ -369,28 +398,58 @@ export function FacilityProfileClient({
         }
       >
         {filteredPrelive.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No pre-live records found for this facility.</p>
+          <p className="text-muted-foreground text-sm">
+            No pre-live records found for this facility.
+          </p>
         ) : (
           <div className="space-y-3">
             {filteredPrelive.map((prelive) => {
               const roles = parseRoles(prelive.rolesNeeded);
-              const relatedWfs = (workflowsByRelated.get(prelive.id) ?? []) as WorkflowRow[];
+              const relatedWfs = (workflowsByRelated.get(prelive.id) ??
+                []) as WorkflowRow[];
               return (
                 <div
                   key={prelive.id}
-                  className="rounded-md border p-3 cursor-pointer transition-colors hover:bg-muted/40"
+                  className="hover:bg-muted/40 cursor-pointer rounded-md border p-3 transition-colors"
                   onClick={() =>
                     openDrawer(
                       `Pre-live Record`,
                       `Priority: ${prelive.priority ?? "-"}`,
                       [
                         { label: "Priority", value: prelive.priority ?? "-" },
-                        { label: "Go-live date", value: formatDate(prelive.goLiveDate) },
-                        { label: "Credentialing due", value: formatDate(prelive.credentialingDueDate) },
-                        { label: "Board meeting", value: formatDate(prelive.boardMeetingDate) },
-                        { label: "Temps possible", value: prelive.tempsPossible === null ? "-" : prelive.tempsPossible ? "Yes" : "No" },
-                        { label: "Payor enrollment", value: prelive.payorEnrollmentRequired === null ? "-" : prelive.payorEnrollmentRequired ? "Required" : "Not required" },
-                        ...(roles.length > 0 ? [{ label: "Roles needed", value: roles.join(", ") }] : []),
+                        {
+                          label: "Go-live date",
+                          value: formatDate(prelive.goLiveDate),
+                        },
+                        {
+                          label: "Credentialing due",
+                          value: formatDate(prelive.credentialingDueDate),
+                        },
+                        {
+                          label: "Board meeting",
+                          value: formatDate(prelive.boardMeetingDate),
+                        },
+                        {
+                          label: "Temps possible",
+                          value:
+                            prelive.tempsPossible === null
+                              ? "-"
+                              : prelive.tempsPossible
+                                ? "Yes"
+                                : "No",
+                        },
+                        {
+                          label: "Payor enrollment",
+                          value:
+                            prelive.payorEnrollmentRequired === null
+                              ? "-"
+                              : prelive.payorEnrollmentRequired
+                                ? "Required"
+                                : "Not required",
+                        },
+                        ...(roles.length > 0
+                          ? [{ label: "Roles needed", value: roles.join(", ") }]
+                          : []),
                       ],
                       relatedWfs,
                     )
@@ -399,32 +458,54 @@ export function FacilityProfileClient({
                   <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
                     <div>
                       <p className="text-muted-foreground text-xs">Priority</p>
-                      <p className="text-sm font-medium">{prelive.priority ?? "-"}</p>
+                      <p className="text-sm font-medium">
+                        {prelive.priority ?? "-"}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">Go-live date</p>
-                      <p className={`text-sm font-medium ${getDueDateTone(prelive.goLiveDate)}`}>
+                      <p className="text-muted-foreground text-xs">
+                        Go-live date
+                      </p>
+                      <p
+                        className={`text-sm font-medium ${getDueDateTone(prelive.goLiveDate)}`}
+                      >
                         {formatDate(prelive.goLiveDate)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">Credentialing due</p>
-                      <p className={`text-sm font-medium ${getDueDateTone(prelive.credentialingDueDate)}`}>
+                      <p className="text-muted-foreground text-xs">
+                        Credentialing due
+                      </p>
+                      <p
+                        className={`text-sm font-medium ${getDueDateTone(prelive.credentialingDueDate)}`}
+                      >
                         {formatDate(prelive.credentialingDueDate)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">Board meeting</p>
-                      <p className="text-sm font-medium">{formatDate(prelive.boardMeetingDate)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs">Temps possible</p>
+                      <p className="text-muted-foreground text-xs">
+                        Board meeting
+                      </p>
                       <p className="text-sm font-medium">
-                        {prelive.tempsPossible === null ? "-" : prelive.tempsPossible ? "Yes" : "No"}
+                        {formatDate(prelive.boardMeetingDate)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">Payor enrollment</p>
+                      <p className="text-muted-foreground text-xs">
+                        Temps possible
+                      </p>
+                      <p className="text-sm font-medium">
+                        {prelive.tempsPossible === null
+                          ? "-"
+                          : prelive.tempsPossible
+                            ? "Yes"
+                            : "No"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">
+                        Payor enrollment
+                      </p>
                       <p className="text-sm font-medium">
                         {prelive.payorEnrollmentRequired === null
                           ? "-"
@@ -436,10 +517,16 @@ export function FacilityProfileClient({
                   </div>
                   {roles.length > 0 && (
                     <div className="mt-2">
-                      <p className="text-muted-foreground text-xs">Roles needed</p>
+                      <p className="text-muted-foreground text-xs">
+                        Roles needed
+                      </p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {roles.map((role) => (
-                          <Badge key={role} className="text-xs" variant="outline">
+                          <Badge
+                            key={role}
+                            className="text-xs"
+                            variant="outline"
+                          >
                             {role}
                           </Badge>
                         ))}
@@ -470,19 +557,22 @@ export function FacilityProfileClient({
         ) : (
           <div className="space-y-1">
             {filteredCredentials.map((credential) => {
-              const relatedWfs = (workflowsByRelated.get(credential.id) ?? []) as WorkflowRow[];
+              const relatedWfs = (workflowsByRelated.get(credential.id) ??
+                []) as WorkflowRow[];
               const providerName = formatProviderName({
                 degree: credential.providerDegree,
                 firstName: credential.providerFirstName,
                 lastName: credential.providerLastName,
                 middleName: credential.providerMiddleName,
               });
-              const isApproved = (credential.decision ?? "").toLowerCase().includes("approved");
+              const isApproved = (credential.decision ?? "")
+                .toLowerCase()
+                .includes("approved");
 
               return (
                 <div
                   key={credential.id}
-                  className={`flex items-center justify-between rounded-md border px-3 py-2 cursor-pointer transition-colors hover:bg-muted/40 ${
+                  className={`hover:bg-muted/40 flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition-colors ${
                     isApproved
                       ? "border-emerald-500/40 bg-emerald-500/5"
                       : "border-blue-500/40 bg-blue-500/5"
@@ -492,20 +582,46 @@ export function FacilityProfileClient({
                       providerName,
                       credential.notes ?? undefined,
                       [
-                        { label: "Priority", value: credential.priority ?? "-" },
+                        {
+                          label: "Priority",
+                          value: credential.priority ?? "-",
+                        },
                         {
                           label: "Decision",
                           value: (
-                            <Badge className={getDecisionTone(credential.decision)} variant="outline">
+                            <Badge
+                              className={getDecisionTone(credential.decision)}
+                              variant="outline"
+                            >
                               {credential.decision ?? "-"}
                             </Badge>
                           ),
                         },
-                        { label: "Privileges", value: credential.privileges ?? "-" },
-                        { label: "Facility Type", value: credential.facilityType ?? "-" },
-                        { label: "Form Size", value: credential.formSize ?? "-" },
-                        { label: "App Required", value: credential.applicationRequired === null ? "-" : credential.applicationRequired ? "Yes" : "No" },
-                        { label: "Updated", value: formatDate(credential.updatedAt) },
+                        {
+                          label: "Privileges",
+                          value: credential.privileges ?? "-",
+                        },
+                        {
+                          label: "Facility Type",
+                          value: credential.facilityType ?? "-",
+                        },
+                        {
+                          label: "Form Size",
+                          value: credential.formSize ?? "-",
+                        },
+                        {
+                          label: "App Required",
+                          value:
+                            credential.applicationRequired === null
+                              ? "-"
+                              : credential.applicationRequired
+                                ? "Yes"
+                                : "No",
+                        },
+                        {
+                          label: "Updated",
+                          value: formatDate(credential.updatedAt),
+                        },
                       ],
                       relatedWfs,
                     )
@@ -516,7 +632,9 @@ export function FacilityProfileClient({
                     className={`text-[11px] ${getDecisionTone(credential.decision)}`}
                     variant="outline"
                   >
-                    {isApproved ? "Approved" : credential.decision ?? "In Progress"}
+                    {isApproved
+                      ? "Approved"
+                      : (credential.decision ?? "In Progress")}
                   </Badge>
                 </div>
               );

@@ -21,7 +21,7 @@ type AddFacilityForm = {
   state: string;
   email: string;
   address: string;
-  proxy: string;
+  proxy: boolean;
   tatSla: string;
 };
 
@@ -30,11 +30,15 @@ const initialFormState: AddFacilityForm = {
   state: "",
   email: "",
   address: "",
-  proxy: "",
+  proxy: false,
   tatSla: "",
 };
 
-export function AddFacilityDialog({ triggerClassName }: { triggerClassName?: string }) {
+export function AddFacilityDialog({
+  triggerClassName,
+}: {
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<AddFacilityForm>(initialFormState);
 
@@ -50,7 +54,10 @@ export function AddFacilityDialog({ triggerClassName }: { triggerClassName?: str
     },
   });
 
-  const updateField = (field: keyof AddFacilityForm, value: string) => {
+  const updateField = (
+    field: keyof AddFacilityForm,
+    value: string | boolean,
+  ) => {
     setForm((previous) => ({ ...previous, [field]: value }));
   };
 
@@ -67,7 +74,7 @@ export function AddFacilityDialog({ triggerClassName }: { triggerClassName?: str
       state: form.state.trim() || undefined,
       email: form.email.trim() || undefined,
       address: form.address.trim() || undefined,
-      proxy: form.proxy.trim() || undefined,
+      proxy: form.proxy,
       tatSla: form.tatSla.trim() || undefined,
     });
   };
@@ -81,7 +88,10 @@ export function AddFacilityDialog({ triggerClassName }: { triggerClassName?: str
       }}
     >
       <DialogTrigger asChild>
-        <Button className={`h-8.5 gap-2 ${triggerClassName ?? ""}`.trim()} size="sm">
+        <Button
+          className={`h-8.5 gap-2 ${triggerClassName ?? ""}`.trim()}
+          size="sm"
+        >
           <Plus className="h-6 w-4" />
           Add Facility
         </Button>
@@ -113,22 +123,30 @@ export function AddFacilityDialog({ triggerClassName }: { triggerClassName?: str
               <Input
                 id="facility-state"
                 maxLength={2}
-                onChange={(event) => updateField("state", event.target.value.toUpperCase())}
+                onChange={(event) =>
+                  updateField("state", event.target.value.toUpperCase())
+                }
                 placeholder="TX"
                 value={form.state}
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="facility-proxy">
-                Proxy (optional)
+              <label
+                className="flex h-9 items-center gap-2 text-sm font-medium"
+                htmlFor="facility-proxy"
+              >
+                <input
+                  id="facility-proxy"
+                  type="checkbox"
+                  checked={form.proxy}
+                  onChange={(event) =>
+                    updateField("proxy", event.target.checked)
+                  }
+                  className="accent-primary"
+                />
+                Proxy
               </label>
-              <Input
-                id="facility-proxy"
-                onChange={(event) => updateField("proxy", event.target.value)}
-                placeholder="Vesta"
-                value={form.proxy}
-              />
             </div>
           </div>
 

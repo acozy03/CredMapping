@@ -2,10 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { eq, ilike, isNotNull } from "drizzle-orm";
 
-import {
-  createTRPCRouter,
-  superAdminProcedure,
-} from "~/server/api/trpc";
+import { createTRPCRouter, superAdminProcedure } from "~/server/api/trpc";
 import { agents, authUsers, facilities, providers } from "~/server/db/schema";
 import { resolveAgentId, writeAuditLog } from "~/server/api/audit";
 import { getTeamFromEmail } from "~/server/auth/domain";
@@ -60,7 +57,9 @@ export const superadminRouter = createTRPCRouter({
         .select({ email: agents.email })
         .from(agents);
 
-      const assignedEmails = new Set(agentEmails.map((a) => a.email.toLowerCase()));
+      const assignedEmails = new Set(
+        agentEmails.map((a) => a.email.toLowerCase()),
+      );
 
       const usersWithEmail = allUsers.flatMap((user) => {
         if (!user.email) return [];
@@ -77,7 +76,9 @@ export const superadminRouter = createTRPCRouter({
 
       if (input?.search) {
         const q = input.search.toLowerCase();
-        unassigned = unassigned.filter((user) => user.email.toLowerCase().includes(q));
+        unassigned = unassigned.filter((user) =>
+          user.email.toLowerCase().includes(q),
+        );
       }
 
       return unassigned;
@@ -253,7 +254,7 @@ export const superadminRouter = createTRPCRouter({
         state: z.string().trim().max(2).optional(),
         email: z.string().trim().email().optional(),
         address: z.string().trim().optional(),
-        proxy: z.string().trim().optional(),
+        proxy: z.boolean().optional(),
         tatSla: z.string().trim().optional(),
       }),
     )
@@ -265,7 +266,7 @@ export const superadminRouter = createTRPCRouter({
           state: input.state?.toUpperCase() ?? null,
           email: input.email?.toLowerCase() ?? null,
           address: input.address ?? null,
-          proxy: input.proxy ?? null,
+          proxy: input.proxy ?? false,
           tatSla: input.tatSla ?? null,
           status: "Active",
         })

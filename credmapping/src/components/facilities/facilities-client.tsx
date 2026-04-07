@@ -64,7 +64,7 @@ interface Facility {
   id: string;
   name: string | null;
   state: string | null;
-  proxy: string | null;
+  proxy: boolean | null;
   status: FacilityStatus | null;
   email: string | null;
   address: string | null;
@@ -93,7 +93,7 @@ interface FacilitiesClientProps {
 function ContactsPanel({ contacts }: { contacts: FacilityContact[] }) {
   if (!contacts.length) {
     return (
-      <p className="py-3 text-sm text-muted-foreground">
+      <p className="text-muted-foreground py-3 text-sm">
         No contacts for this facility.
       </p>
     );
@@ -101,7 +101,7 @@ function ContactsPanel({ contacts }: { contacts: FacilityContact[] }) {
 
   return (
     <div className="py-2">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider">
+      <p className="mb-2 text-xs font-semibold tracking-wider uppercase">
         Contacts ({contacts.length})
       </p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -114,7 +114,7 @@ function ContactsPanel({ contacts }: { contacts: FacilityContact[] }) {
           .map((c) => (
             <div
               key={c.id}
-              className="flex flex-col gap-1 rounded-md border bg-background p-3 text-sm"
+              className="bg-background flex flex-col gap-1 rounded-md border p-3 text-sm"
             >
               <div className="flex items-center gap-2 font-medium">
                 <User className="h-3.5 w-3.5" />
@@ -122,15 +122,13 @@ function ContactsPanel({ contacts }: { contacts: FacilityContact[] }) {
                 {c.isPrimary && (
                   <Badge
                     variant="secondary"
-                    className="gap-1 text-[10px] px-1.5 py-0 bg-amber-500/15 text-amber-600 border-amber-500/25"
+                    className="gap-1 border-amber-500/25 bg-amber-500/15 px-1.5 py-0 text-[10px] text-amber-600"
                   >
                     <Star className="h-2.5 w-2.5" /> Primary
                   </Badge>
                 )}
               </div>
-              {c.title && (
-                <span className="text-xs">{c.title}</span>
-              )}
+              {c.title && <span className="text-xs">{c.title}</span>}
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                 {c.email && (
                   <span className="flex items-center gap-1">
@@ -157,14 +155,14 @@ function StatusBadge({ status }: { status: FacilityStatus | null }) {
   const normalized = status?.toLowerCase() ?? "";
   if (normalized === "active") {
     return (
-      <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/25 dark:text-emerald-400">
+      <Badge className="border-emerald-500/25 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
         Active
       </Badge>
     );
   }
   if (normalized === "in progress") {
     return (
-      <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/25 dark:text-blue-400">
+      <Badge className="border-blue-500/25 bg-blue-500/15 text-blue-600 dark:text-blue-400">
         In Progress
       </Badge>
     );
@@ -198,7 +196,9 @@ export function FacilitiesClient({
   });
   const [localSearch, setLocalSearch] = useState(initialSearch);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
 
   // ─── URL-based navigation ─────────────────────────────────────
@@ -212,7 +212,12 @@ export function FacilitiesClient({
       }
     }
     // Reset page when search/filter changes
-    if ("search" in overrides || "active" in overrides || "contacts" in overrides || "size" in overrides) {
+    if (
+      "search" in overrides ||
+      "active" in overrides ||
+      "contacts" in overrides ||
+      "size" in overrides
+    ) {
       params.delete("page");
     }
     const qs = params.toString();
@@ -251,13 +256,13 @@ export function FacilitiesClient({
   })();
 
   return (
-    <div className="space-y-6 relative">
+    <div className="relative space-y-6">
       {/* Loading overlay */}
       {isPending && (
-        <div className="absolute inset-0 bg-background/50 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-lg">
+        <div className="bg-background/50 absolute inset-0 z-10 flex items-center justify-center rounded-lg backdrop-blur-[2px]">
           <div className="flex flex-col items-center gap-2">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="border-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
+            <p className="text-muted-foreground text-sm">Loading...</p>
           </div>
         </div>
       )}
@@ -265,12 +270,12 @@ export function FacilitiesClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-            <Building2 className="h-5 w-5 text-primary" />
+          <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg">
+            <Building2 className="text-primary h-5 w-5" />
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Facilities</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               {total.toLocaleString()} total facilities
             </p>
           </div>
@@ -316,16 +321,16 @@ export function FacilitiesClient({
       {/* Toolbar: search + filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
           <Input
             placeholder="Search by name, state, email, address…"
             value={localSearch}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-8 pr-9"
+            className="pr-9 pl-8"
             disabled={isPending}
           />
           {isPending && (
-            <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />
+            <Loader2 className="text-muted-foreground absolute top-2.5 right-2.5 h-4 w-4 animate-spin" />
           )}
         </div>
 
@@ -353,7 +358,9 @@ export function FacilitiesClient({
 
         <Select
           value={initialContactsFilter}
-          onValueChange={(v) => navigate({ contacts: v === "all" ? undefined : v })}
+          onValueChange={(v) =>
+            navigate({ contacts: v === "all" ? undefined : v })
+          }
           disabled={isPending}
         >
           <SelectTrigger className="w-[150px]">
@@ -386,30 +393,32 @@ export function FacilitiesClient({
 
       {/* ─── Table View ────────────────────────────────────────── */}
       {viewMode === "table" && (
-        <div className={`rounded-lg border overflow-x-auto transition-opacity duration-200 ${isPending ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+        <div
+          className={`overflow-x-auto rounded-lg border transition-opacity duration-200 ${isPending ? "pointer-events-none opacity-50" : "opacity-100"}`}
+        >
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10" />
-                <TableHead className="text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="text-xs font-semibold tracking-wider uppercase">
                   Name
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="text-xs font-semibold tracking-wider uppercase">
                   State
                 </TableHead>
-                <TableHead className="hidden md:table-cell text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="hidden text-xs font-semibold tracking-wider uppercase md:table-cell">
                   Proxy
                 </TableHead>
-                <TableHead className="hidden lg:table-cell text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="hidden text-xs font-semibold tracking-wider uppercase lg:table-cell">
                   Email
                 </TableHead>
-                <TableHead className="hidden xl:table-cell text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="hidden text-xs font-semibold tracking-wider uppercase xl:table-cell">
                   Address
                 </TableHead>
-                <TableHead className="text-center text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="text-center text-xs font-semibold tracking-wider uppercase">
                   Contacts
                 </TableHead>
-                <TableHead className="text-center text-xs font-semibold uppercase tracking-wider">
+                <TableHead className="text-center text-xs font-semibold tracking-wider uppercase">
                   Status
                 </TableHead>
               </TableRow>
@@ -419,7 +428,7 @@ export function FacilitiesClient({
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <div className="text-muted-foreground flex flex-col items-center gap-1">
                       <Building2 className="h-8 w-8 opacity-40" />
                       <p className="text-sm">No facilities found.</p>
                       {initialSearch && (
@@ -441,13 +450,13 @@ export function FacilitiesClient({
                         <TableCell className="w-10">
                           <button
                             onClick={() => toggleRow(f.id)}
-                            className="rounded p-1 hover:bg-muted/50 transition-colors"
+                            className="hover:bg-muted/50 rounded p-1 transition-colors"
                             aria-label={isExpanded ? "Collapse" : "Expand"}
                           >
                             {isExpanded ? (
-                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              <ChevronDown className="text-muted-foreground h-4 w-4" />
                             ) : (
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              <ChevronRight className="text-muted-foreground h-4 w-4" />
                             )}
                           </button>
                         </TableCell>
@@ -464,7 +473,7 @@ export function FacilitiesClient({
                           )}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          {f.proxy ?? "—"}
+                          {f.proxy ? "Yes" : "No"}
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
                           {f.email ? (
@@ -494,7 +503,9 @@ export function FacilitiesClient({
                               {f.contacts.length}
                             </Badge>
                           ) : (
-                            <span className="text-xs text-muted-foreground">0</span>
+                            <span className="text-muted-foreground text-xs">
+                              0
+                            </span>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
@@ -522,9 +533,11 @@ export function FacilitiesClient({
 
       {/* ─── Grid / Card View ──────────────────────────────────── */}
       {viewMode === "grid" && (
-        <div className={`transition-opacity duration-200 ${isPending ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
+        <div
+          className={`transition-opacity duration-200 ${isPending ? "pointer-events-none opacity-50" : "opacity-100"}`}
+        >
           {rows.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-sm text-muted-foreground">
+            <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-sm">
               No facilities found.
             </div>
           ) : (
@@ -532,17 +545,14 @@ export function FacilitiesClient({
               {rows.map((f) => {
                 const isExpanded = expandedRows.has(f.id);
                 return (
-                  <article
-                    key={f.id}
-                    className="rounded-lg border bg-card p-4"
-                  >
+                  <article key={f.id} className="bg-card rounded-lg border p-4">
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="text-base font-semibold">
                         {f.name?.trim() ?? "Unnamed Facility"}
                       </h2>
                       <StatusBadge status={f.status} />
                     </div>
-                    <dl className="mt-3 space-y-1 text-sm text-muted-foreground">
+                    <dl className="text-muted-foreground mt-3 space-y-1 text-sm">
                       <div className="flex justify-between gap-2">
                         <dt>State</dt>
                         <dd>{f.state ?? "—"}</dd>
@@ -553,13 +563,11 @@ export function FacilitiesClient({
                       </div>
                       <div className="flex justify-between gap-2">
                         <dt>Proxy</dt>
-                        <dd>{f.proxy ?? "—"}</dd>
+                        <dd>{f.proxy ? "Yes" : "No"}</dd>
                       </div>
                       <div>
                         <dt className="text-muted-foreground">Address</dt>
-                        <dd className="text-foreground">
-                          {f.address ?? "—"}
-                        </dd>
+                        <dd className="text-foreground">{f.address ?? "—"}</dd>
                       </div>
                     </dl>
 
@@ -568,7 +576,7 @@ export function FacilitiesClient({
                       <div className="mt-3 border-t pt-3">
                         <button
                           onClick={() => toggleRow(f.id)}
-                          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                          className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs font-medium transition-colors"
                         >
                           {isExpanded ? (
                             <ChevronDown className="h-3.5 w-3.5" />
@@ -596,9 +604,8 @@ export function FacilitiesClient({
       {/* ─── Pagination ──────────────────────────────────────────── */}
       {totalPages > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            Showing{" "}
-            {((page - 1) * pageSize + 1).toLocaleString()}–
+          <p className="text-muted-foreground text-sm">
+            Showing {((page - 1) * pageSize + 1).toLocaleString()}–
             {Math.min(page * pageSize, total).toLocaleString()} of{" "}
             {total.toLocaleString()} facilities
           </p>
@@ -619,15 +626,13 @@ export function FacilitiesClient({
               size="icon"
               className="h-8 w-8"
               disabled={page <= 1 || isPending}
-              onClick={() =>
-                navigate({ page: String(Math.max(1, page - 1)) })
-              }
+              onClick={() => navigate({ page: String(Math.max(1, page - 1)) })}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
 
             {pageNumbers[0]! > 1 && (
-              <span className="px-1 text-xs text-muted-foreground">…</span>
+              <span className="text-muted-foreground px-1 text-xs">…</span>
             )}
             {pageNumbers.map((p) => (
               <Button
@@ -642,7 +647,7 @@ export function FacilitiesClient({
               </Button>
             ))}
             {pageNumbers[pageNumbers.length - 1]! < totalPages && (
-              <span className="px-1 text-xs text-muted-foreground">…</span>
+              <span className="text-muted-foreground px-1 text-xs">…</span>
             )}
 
             <Button
@@ -662,9 +667,7 @@ export function FacilitiesClient({
               size="icon"
               className="h-8 w-8"
               disabled={page >= totalPages || isPending}
-              onClick={() =>
-                navigate({ page: String(totalPages) })
-              }
+              onClick={() => navigate({ page: String(totalPages) })}
             >
               <ChevronsRight className="h-4 w-4" />
             </Button>
