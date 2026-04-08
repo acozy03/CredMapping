@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   BriefcaseMedical,
   Building2,
+  ClipboardList,
   FileText,
   LayoutDashboard,
   Mail,
@@ -53,6 +54,12 @@ const sidebarItems = [
     name: "Comm Logs",
     href: "/comm-logs",
     icon: Mail,
+    roles: ["user", "admin", "superadmin"],
+  },
+    {
+    name: "Cred Requests",
+    href: "/credentialing-requests",
+    icon: ClipboardList,
     roles: ["user", "admin", "superadmin"],
   },
   // Internal

@@ -26,6 +26,10 @@ export const facilityStatusEnum = pgEnum("status", ["Active", "Inactive", "In Pr
 export const followUpStatus = pgEnum("follow_up_status", ["Completed", "Pending Response", "Not Completed"]);
 export const psvStatus = pgEnum("psv_status", ["Not Started", "Requested", "Received", "Inactive Rad", "Closed", "Not Affiliated", "Old Request", "Hold"]);
 export const psvType = pgEnum("psv_type", ["Education", "Work", "Hospital", "Peer", "COI/Loss Run", "Claims Document", "Board Actions", "Locums/Work", "Vesta Practice Location", "Vesta Hospital", "Work COI", "OPPE"]);
+export const credRequestTypeEnum = pgEnum("cred_request_type", ["facility", "license"]);
+export const credRequestReasonEnum = pgEnum("cred_request_reason", ["Remove from Facility", "Add to Facility", "Obtain License for Provider"]);
+export const credRequestPriorityEnum = pgEnum("cred_request_priority", ["STAT", "HIGH", "MEDIUM", "LOW"]);
+export const credRequestStatusEnum = pgEnum("cred_request_status", ["Received", "In Progress", "Completed"]);
 
 const isAdminOrSuperAdmin = sql`exists (
   select 1
@@ -297,6 +301,25 @@ export const providerStateLicenses = pgTable("provider_state_licenses", {
     .$onUpdate(() => new Date()),
 });
 
+export const credentialingRequests = pgTable("credentialing_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestType: credRequestTypeEnum("request_type").notNull(),
+  providerId: uuid("provider_id").references(() => providers.id),
+  relatedId: uuid("related_id").notNull(),
+  relatedName: text("related_name"),
+  requesterName: text("requester_name"),
+  reasonForRequest: credRequestReasonEnum("reason_for_request").notNull(),
+  priorityLevel: credRequestPriorityEnum("priority_level").notNull(),
+  requestedDueDate: date("requested_due_date"),
+  additionalNotes: text("additional_notes"),
+  status: credRequestStatusEnum("status").default("Received").notNull(),
+  agentId: uuid("agent_id").references(() => agents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 export const nowSql = sql`now()`;
 
 export const agentsAuthenticatedAll = createAuthenticatedAllPolicy("agents_authenticated_all").link(agents);
@@ -324,6 +347,8 @@ export const stateLicenseWorkflowsAuthenticatedAll = createAuthenticatedAllPolic
 export const psvAuthenticatedAll = createAuthenticatedAllPolicy("pendingPSV_authenticated_all").link(pendingPSV);
 
 export const missingDocsAuthenticated = createAuthenticatedAllPolicy("missing_docs_authenticated_all").link(missingDocs); 
+
+export const credentialingRequestsAuthenticatedAll = createAuthenticatedAllPolicy("credentialing_requests_authenticated_all").link(credentialingRequests);
 
 export const commLogsSelectAdmin = pgPolicy("comm_logs_admin_all", {
   for: "all",
