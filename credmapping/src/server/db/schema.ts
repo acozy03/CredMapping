@@ -96,6 +96,10 @@ export const incidentCategoryEnum = pgEnum("incident_category", [
   "Event Log",
   "Documents",
 ]);
+export const credRequestTypeEnum = pgEnum("cred_request_type", ["facility", "license"]);
+export const credRequestReasonEnum = pgEnum("cred_request_reason", ["Remove from Facility", "Add to Facility", "Obtain License for Provider"]);
+export const credRequestPriorityEnum = pgEnum("cred_request_priority", ["STAT", "HIGH", "MEDIUM", "LOW"]);
+export const credRequestStatusEnum = pgEnum("cred_request_status", ["Received", "In Progress", "Completed"]);
 
 const isAdminOrSuperAdmin = sql`exists (
   select 1
@@ -396,6 +400,25 @@ export const facilityDocuments = pgTable("facility_documents", {
     .$onUpdate(() => new Date()),
 });
 
+export const credentialingRequests = pgTable("credentialing_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestType: credRequestTypeEnum("request_type").notNull(),
+  providerId: uuid("provider_id").references(() => providers.id).notNull(),
+  relatedId: uuid("related_id").notNull(),
+  relatedName: text("related_name"),
+  requesterName: text("requester_name"),
+  reasonForRequest: credRequestReasonEnum("reason_for_request").notNull(),
+  priorityLevel: credRequestPriorityEnum("priority_level").notNull(),
+  requestedDueDate: date("requested_due_date"),
+  additionalNotes: text("additional_notes"),
+  status: credRequestStatusEnum("status").default("Received").notNull(),
+  agentId: uuid("agent_id").references(() => agents.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 export const nowSql = sql`now()`;
 
 export const agentsAuthenticatedAll = createAuthenticatedAllPolicy(
@@ -453,6 +476,8 @@ export const missingDocsAuthenticated = createAuthenticatedAllPolicy(
 ).link(missingDocs);
 
 export const facilityDocumentsAuthenticatedAll = createAuthenticatedAllPolicy("facility_documents_authenticated_all").link(facilityDocuments);
+
+export const credentialingRequestsAuthenticatedAll = createAuthenticatedAllPolicy("credentialing_requests_authenticated_all").link(credentialingRequests);
 
 export const commLogsSelectAdmin = pgPolicy("comm_logs_admin_all", {
   for: "all",
