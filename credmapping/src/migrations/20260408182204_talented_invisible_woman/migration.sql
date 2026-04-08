@@ -6,6 +6,7 @@ CREATE TYPE "cred_request_type" AS ENUM('facility', 'license');--> statement-bre
 CREATE TYPE "status" AS ENUM('Active', 'Inactive', 'In Progress');--> statement-breakpoint
 CREATE TYPE "follow_up_status" AS ENUM('Completed', 'Pending Response', 'Not Completed');--> statement-breakpoint
 CREATE TYPE "form_size" AS ENUM('small', 'medium', 'large', 'x-large', 'online');--> statement-breakpoint
+CREATE TYPE "incident_category" AS ENUM('Personal Info', 'Education & Training', 'Practice / Employer', 'Facility Affiliations', 'Work History', 'Peer References', 'Licensure', 'Certifications', 'Medical Malpractice', 'Health Info', 'Event Log', 'Documents');--> statement-breakpoint
 CREATE TYPE "initial_or_renewal" AS ENUM('initial', 'renewal');--> statement-breakpoint
 CREATE TYPE "privilege_tier" AS ENUM('Inactive', 'Full', 'Temp', 'In Progress');--> statement-breakpoint
 CREATE TYPE "psv_status" AS ENUM('Not Started', 'Requested', 'Received', 'Inactive Rad', 'Closed', 'Not Affiliated', 'Old Request', 'Hold');--> statement-breakpoint
@@ -63,7 +64,7 @@ ALTER TABLE "comm_logs" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "credentialing_requests" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	"request_type" "cred_request_type" NOT NULL,
-	"provider_id" uuid,
+	"provider_id" uuid NOT NULL,
 	"related_id" uuid NOT NULL,
 	"related_name" text,
 	"requester_name" text,

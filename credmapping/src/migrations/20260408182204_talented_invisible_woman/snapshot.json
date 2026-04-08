@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "d76a990b-f084-47f7-8b04-862bc1791bbc",
+  "id": "c35fc229-267c-407d-b436-3e5c88f9124d",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -85,6 +85,25 @@
         "online"
       ],
       "name": "form_size",
+      "entityType": "enums",
+      "schema": "public"
+    },
+    {
+      "values": [
+        "Personal Info",
+        "Education & Training",
+        "Practice / Employer",
+        "Facility Affiliations",
+        "Work History",
+        "Peer References",
+        "Licensure",
+        "Certifications",
+        "Medical Malpractice",
+        "Health Info",
+        "Event Log",
+        "Documents"
+      ],
+      "name": "incident_category",
       "entityType": "enums",
       "schema": "public"
     },
@@ -712,7 +731,7 @@
     {
       "type": "uuid",
       "typeSchema": null,
-      "notNull": false,
+      "notNull": true,
       "dimensions": 0,
       "default": null,
       "generated": null,
