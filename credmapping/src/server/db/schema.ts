@@ -403,7 +403,7 @@ export const facilityDocuments = pgTable("facility_documents", {
 export const credentialingRequests = pgTable("credentialing_requests", {
   id: uuid("id").defaultRandom().primaryKey(),
   requestType: credRequestTypeEnum("request_type").notNull(),
-  providerId: uuid("provider_id").references(() => providers.id),
+  providerId: uuid("provider_id").references(() => providers.id).notNull(),
   relatedId: uuid("related_id").notNull(),
   relatedName: text("related_name"),
   requesterName: text("requester_name"),

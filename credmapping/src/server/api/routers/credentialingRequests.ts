@@ -15,8 +15,8 @@ export const credentialingRequestsRouter = createTRPCRouter({
     .input(
       z.object({
         search: z.string().optional(),
-        limit: z.number().default(100),
-        offset: z.number().default(0),
+        limit: z.number().int().min(1).max(200).default(100),
+        offset: z.number().int().min(0).default(0),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -115,21 +115,25 @@ export const credentialingRequestsRouter = createTRPCRouter({
         throw new Error("At least one facility or license state is required.");
       }
 
-      const inserted = await ctx.db
-        .insert(credentialingRequests)
-        .values(rows)
-        .returning();
+      const inserted = await ctx.db.transaction(async (tx) => {
+        const insertedRecords = await tx
+          .insert(credentialingRequests)
+          .values(rows)
+          .returning();
 
-      for (const record of inserted) {
-        await writeAuditLog(ctx.db, {
-          tableName: "credentialing_requests",
-          recordId: record.id,
-          action: "create",
-          actorId: actor?.id ?? null,
-          actorEmail: actor?.email ?? null,
-          newData: record as unknown as Record<string, unknown>,
-        });
-      }
+        for (const record of insertedRecords) {
+          await writeAuditLog(tx, {
+            tableName: "credentialing_requests",
+            recordId: record.id,
+            action: "create",
+            actorId: actor?.id ?? null,
+            actorEmail: actor?.email ?? null,
+            newData: record as unknown as Record<string, unknown>,
+          });
+        }
+
+        return insertedRecords;
+      });
 
       return inserted;
     }),
@@ -148,6 +152,16 @@ export const credentialingRequestsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...updates } = input;
+
+      const hasUpdate = updates.status !== undefined ||
+        updates.priorityLevel !== undefined ||
+        updates.requestedDueDate !== undefined ||
+        updates.additionalNotes !== undefined ||
+        updates.agentId !== undefined;
+
+      if (!hasUpdate) {
+        throw new Error("At least one field must be provided to update.");
+      }
 
       const [existing] = await ctx.db
         .select()

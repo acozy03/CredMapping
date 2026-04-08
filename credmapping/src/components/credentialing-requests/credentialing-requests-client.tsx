@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import {
@@ -45,6 +45,12 @@ import { DatePicker } from "~/components/ui/date-picker";
 const REASONS = ["Remove from Facility", "Add to Facility", "Obtain License for Provider"] as const;
 const PRIORITIES = ["STAT", "HIGH", "MEDIUM", "LOW"] as const;
 const STATUSES = ["Received", "In Progress", "Completed"] as const;
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+] as const;
 
 type RequestType = "facility" | "license";
 type Reason = (typeof REASONS)[number];
@@ -117,8 +123,8 @@ export default function CredentialingRequestsClient() {
 
   // Autocomplete search state
   const [providerSearch, setProviderSearch] = useState("");
+  const [providerLabel, setProviderLabel] = useState("");
   const [facilitySearch, setFacilitySearch] = useState("");
-  const [stateInput, setStateInput] = useState("");
   const [agentSearches, setAgentSearches] = useState<Record<string, string>>({});
 
   // Queries
@@ -144,8 +150,8 @@ export default function CredentialingRequestsClient() {
       setDialogOpen(false);
       setForm({ ...initialForm });
       setProviderSearch("");
+      setProviderLabel("");
       setFacilitySearch("");
-      setStateInput("");
       void refetch();
     },
     onError: (err) => {
@@ -202,13 +208,6 @@ export default function CredentialingRequestsClient() {
     });
   }, [form, createBatchMutation]);
 
-  // Provider label for the selected provider
-  const selectedProviderLabel = useMemo(() => {
-    if (!form.providerId || !providerResults) return "";
-    const found = providerResults.find((p) => p.id === form.providerId);
-    return found ? buildProviderLabel(found) : "";
-  }, [form.providerId, providerResults]);
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
@@ -236,8 +235,8 @@ export default function CredentialingRequestsClient() {
               if (!open) {
                 setForm({ ...initialForm });
                 setProviderSearch("");
+                setProviderLabel("");
                 setFacilitySearch("");
-                setStateInput("");
               }
             }}
           >
@@ -283,7 +282,7 @@ export default function CredentialingRequestsClient() {
                   {form.providerId ? (
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-sm">
-                        {selectedProviderLabel}
+                        {providerLabel}
                       </Badge>
                       <Button
                         variant="ghost"
@@ -292,6 +291,7 @@ export default function CredentialingRequestsClient() {
                         onClick={() => {
                           updateField("providerId", "");
                           setProviderSearch("");
+                          setProviderLabel("");
                         }}
                       >
                         Change
@@ -314,8 +314,9 @@ export default function CredentialingRequestsClient() {
                                   className="w-full rounded px-3 py-2 text-left text-sm hover:bg-accent"
                                   onClick={() => {
                                     updateField("providerId", p.id);
+                                    setProviderLabel(buildProviderLabel(p));
                                     setProviderSearch("");
-                                  }}
+                                  }}}
                                 >
                                   {buildProviderLabel(p)}
                                 </button>
@@ -423,43 +424,26 @@ export default function CredentialingRequestsClient() {
                         ))}
                       </div>
                     )}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g. CA, TX, NY"
-                        value={stateInput}
-                        onChange={(e) => setStateInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === ",") {
-                            e.preventDefault();
-                            const val = stateInput.trim().toUpperCase();
-                            if (val && !form.licenseStates.includes(val)) {
-                              setForm((prev) => ({
-                                ...prev,
-                                licenseStates: [...prev.licenseStates, val],
-                              }));
-                            }
-                            setStateInput("");
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const val = stateInput.trim().toUpperCase();
-                          if (val && !form.licenseStates.includes(val)) {
-                            setForm((prev) => ({
-                              ...prev,
-                              licenseStates: [...prev.licenseStates, val],
-                            }));
-                          }
-                          setStateInput("");
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </div>
+                    <Select
+                      value=""
+                      onValueChange={(val) => {
+                        if (val && !form.licenseStates.includes(val)) {
+                          setForm((prev) => ({
+                            ...prev,
+                            licenseStates: [...prev.licenseStates, val],
+                          }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select a state…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {US_STATES.filter((s) => !form.licenseStates.includes(s)).map((s) => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {form.licenseStates.length > 1 && (
                       <p className="text-xs text-muted-foreground">
                         {form.licenseStates.length} states added — one request will be created per state.
