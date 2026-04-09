@@ -124,13 +124,17 @@ const DEFAULT_STATUS_SUGGESTIONS = [
 ];
 
 const PFC_PHASES = [
-  "Application Request",
-  "Application Completion",
+  "APPS & DCOS",
   "QA1",
   "QA2",
   "QA3",
-  "Provider QA",
-  "Facility Decision",
+  "Ready to Send",
+  "Send (If Signature Required)",
+  "Provider",
+  "Submit to Facility",
+  "Facility Review",
+  "Final Decision",
+  "Complete",
 ];
 
 const WORKFLOW_TYPE_OUTLINE_STYLES: Record<string, string> = {
